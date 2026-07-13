@@ -1,0 +1,877 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Deep Dive Studio</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%231C1A16'/><circle cx='50' cy='50' r='26' fill='none' stroke='%23E8A33D' stroke-width='8'/><circle cx='50' cy='50' r='7' fill='%23E8A33D'/></svg>" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Bitter:wght@700;900&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --bakelite:#1C1A16; --bakelite2:#211E19; --panel:#26231D; --panel2:#2C2820;
+    --hair:#3A362D; --text:#EDE6D3; --dim:#9C9484; --faint:#6E6759;
+    --amber:#E8A33D; --amber-dim:#8A6524; --teal:#6FB3A8; --red:#C4553B;
+    --paper:#F1EADA; --ink:#25221B; --ink-soft:#5C564A;
+    --mono:'IBM Plex Mono',ui-monospace,monospace;
+    --sans:'IBM Plex Sans',system-ui,sans-serif;
+    --serif:'Bitter',Georgia,serif;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html{color-scheme:dark}
+  body{background:var(--bakelite);color:var(--text);font-family:var(--sans);overflow-x:hidden}
+  button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit}
+  input,select{font-family:inherit}
+  a{color:var(--amber)}
+  ::selection{background:var(--amber);color:var(--bakelite)}
+  ::-webkit-scrollbar{width:10px;height:10px}
+  ::-webkit-scrollbar-thumb{background:var(--hair);border-radius:5px}
+  ::-webkit-scrollbar-track{background:transparent}
+
+  .mono{font-family:var(--mono)}
+  .micro{font-family:var(--mono);font-size:10px;letter-spacing:.18em;text-transform:uppercase}
+
+  #app{display:grid;grid-template-columns:228px 1fr;min-height:100vh}
+
+  /* ————— sidebar ————— */
+  #sidebar{position:sticky;top:0;height:100vh;display:flex;flex-direction:column;
+    background:var(--bakelite2);border-right:1px solid var(--hair);padding:22px 14px 14px}
+  .brand{padding:0 8px 18px;border-bottom:2px solid var(--amber)}
+  .brand .micro{color:var(--amber)}
+  .brand h1{font-family:var(--serif);font-weight:900;font-size:21px;letter-spacing:-.01em;margin-top:3px}
+  nav{margin-top:14px;display:flex;flex-direction:column;gap:2px}
+  .nav-item{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:6px;
+    font-size:13.5px;color:var(--dim);text-align:left;width:100%;border:1px solid transparent}
+  .nav-item:hover{color:var(--text);background:var(--panel)}
+  .nav-item.active{color:var(--text);background:var(--panel);border-color:var(--hair)}
+  .nav-item .glyph{width:17px;height:17px;flex:none;opacity:.9}
+  .nav-item .lamp{margin-left:auto}
+  .lamp{width:8px;height:8px;flex:none;background:var(--hair)}
+  .lamp.run{background:var(--amber);box-shadow:0 0 8px var(--amber);animation:pulse 1.2s ease-in-out infinite}
+  .lamp.done{background:var(--teal)}
+  .lamp.err{background:var(--red)}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+  @media (prefers-reduced-motion:reduce){*{animation:none!important}}
+  #side-foot{margin-top:auto;padding:10px 8px;border-top:1px solid var(--hair);display:flex;flex-direction:column;gap:6px}
+  #side-foot .row{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:10.5px;color:var(--dim)}
+
+  /* ————— main ————— */
+  #main{padding:30px 34px 130px;max-width:1060px;width:100%;margin:0 auto;min-width:0}
+  .view-title{font-family:var(--serif);font-weight:900;font-size:26px;margin:2px 0 4px}
+  .view-sub{color:var(--dim);font-size:13.5px;max-width:60ch}
+
+  /* ————— composer ————— */
+  #composer{margin-top:22px;background:linear-gradient(180deg,var(--panel2),var(--panel));
+    border:1px solid var(--hair);border-radius:14px;padding:16px 16px 12px;
+    box-shadow:0 1px 0 rgba(255,255,255,.03) inset, 0 12px 30px rgba(0,0,0,.25)}
+  #composer .micro{color:var(--amber)}
+  .compose-row{display:flex;gap:10px;margin-top:10px;align-items:center}
+  #topic{flex:1;background:var(--bakelite);border:1px solid var(--hair);border-radius:10px;
+    color:var(--text);font-size:16px;padding:13px 15px;outline:none;min-width:0}
+  #topic:focus{border-color:var(--amber-dim)}
+  #topic::placeholder{color:var(--faint)}
+  #go{background:var(--amber);color:var(--bakelite);font-family:var(--mono);font-size:12px;
+    letter-spacing:.14em;font-weight:500;padding:13px 20px;border-radius:10px;flex:none}
+  #go:hover{filter:brightness(1.08)}
+  #go:disabled{background:var(--panel);color:var(--faint);border:1px solid var(--hair);cursor:default}
+  #focus{width:100%;margin-top:10px;background:var(--bakelite);border:1px solid var(--hair);
+    border-radius:10px;color:var(--text);font-size:13.5px;padding:10px 15px;outline:none}
+  #focus:focus{border-color:var(--amber-dim)}
+  #focus::placeholder{color:var(--faint)}
+  .compose-foot{display:flex;align-items:center;gap:16px;margin-top:11px;flex-wrap:wrap}
+  .toggle{display:flex;align-items:center;gap:7px;font-family:var(--mono);font-size:10.5px;
+    letter-spacing:.12em;color:var(--dim);cursor:pointer;user-select:none}
+  .toggle input{accent-color:var(--amber);width:13px;height:13px;cursor:pointer}
+  .compose-note{margin-left:auto;font-size:11.5px;color:var(--faint)}
+  .compose-note b{color:var(--dim);font-weight:500}
+
+  /* ————— section headers ————— */
+  .rail-head{display:flex;align-items:baseline;gap:12px;margin:34px 0 12px}
+  .rail-head .micro{color:var(--amber)}
+  .rail-head .aux{margin-left:auto;font-family:var(--mono);font-size:10.5px;color:var(--faint);
+    letter-spacing:.1em;text-transform:uppercase}
+  .rail-head button.aux:hover{color:var(--amber)}
+
+  /* ————— recommendation rail ————— */
+  #recs{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(240px,270px);gap:12px;
+    overflow-x:auto;padding-bottom:8px;scroll-snap-type:x mandatory}
+  .rec{scroll-snap-align:start;background:var(--panel);border:1px solid var(--hair);border-radius:10px;
+    padding:14px;text-align:left;display:flex;flex-direction:column;gap:7px;min-height:118px}
+  .rec:hover{background:var(--panel2);border-color:var(--amber-dim)}
+  .rec .hook{font-family:var(--serif);font-weight:700;font-size:15px;line-height:1.3}
+  .rec .t{font-size:12.5px;color:var(--dim)}
+  .rec .cta{margin-top:auto;font-family:var(--mono);font-size:10px;letter-spacing:.15em;color:var(--amber)}
+
+  /* ————— episode grid ————— */
+  #grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(196px,1fr));gap:16px}
+  .card{background:var(--panel);border:1px solid var(--hair);border-radius:10px;overflow:hidden;
+    text-align:left;display:flex;flex-direction:column;position:relative}
+  .card:hover{background:var(--panel2);border-color:var(--amber-dim)}
+  .card .cover{aspect-ratio:1;width:100%;display:block}
+  .card .body{padding:11px 12px 12px}
+  .card .name{font-family:var(--serif);font-weight:700;font-size:14.5px;line-height:1.3;
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-height:2.6em}
+  .card .meta{margin-top:7px;display:flex;align-items:center;gap:7px;font-family:var(--mono);
+    font-size:10px;color:var(--dim);letter-spacing:.05em;flex-wrap:wrap}
+  .badge{border:1px solid var(--hair);border-radius:4px;padding:1.5px 5px}
+  .badge.cost{color:var(--amber);border-color:var(--amber-dim)}
+  .badge.err{color:var(--red);border-color:var(--red)}
+  .badge.run{color:var(--amber);border-color:var(--amber-dim)}
+  .playbtn{position:absolute;right:10px;top:10px;width:38px;height:38px;border-radius:50%;
+    background:var(--amber);color:var(--bakelite);display:flex;align-items:center;justify-content:center;
+    opacity:0;transform:translateY(4px);transition:all .15s;box-shadow:0 4px 14px rgba(0,0,0,.5)}
+  .card:hover .playbtn{opacity:1;transform:none}
+  .playbtn svg{width:15px;height:15px;margin-left:2px}
+  .empty{border:1px dashed var(--hair);border-radius:10px;padding:34px;color:var(--faint);
+    font-size:13px;text-align:center;grid-column:1/-1}
+
+  /* ————— on air ————— */
+  .onair-head{display:flex;align-items:center;gap:14px;margin-top:20px;background:var(--panel);
+    border:1px solid var(--hair);border-radius:12px;padding:15px 18px;flex-wrap:wrap}
+  .onair-head .lamp{width:11px;height:11px}
+  .onair-title{font-family:var(--serif);font-weight:700;font-size:17px}
+  .onair-stats{margin-left:auto;display:flex;gap:18px;font-family:var(--mono);font-size:11px;color:var(--dim)}
+  .onair-stats b{color:var(--amber);font-weight:500}
+  .onair-cols{display:grid;grid-template-columns:340px 1fr;gap:16px;margin-top:16px;align-items:start}
+  @media(max-width:980px){.onair-cols{grid-template-columns:1fr}}
+  .runsheet{background:var(--panel);border:1px solid var(--hair);border-radius:10px;overflow:hidden}
+  .rs-group{padding:8px 12px 3px;border-bottom:1px solid var(--hair)}
+  .rs-group:last-child{border-bottom:none}
+  .rs-group>.micro{color:var(--faint);padding:2px 0 4px;display:block}
+  .stage{display:flex;align-items:center;gap:10px;padding:5.5px 2px;font-family:var(--mono);font-size:11px}
+  .stage .lbl{color:var(--dim);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .stage.on .lbl{color:var(--text)}
+  .stage .det{color:var(--faint)}
+  .stage.on .det{color:var(--amber)}
+  .stage.ok .det{color:var(--teal)}
+  .stage.bad .det{color:var(--red)}
+  #wirelog{margin-top:14px;background:var(--bakelite2);border:1px solid var(--hair);border-radius:10px;
+    max-height:300px;overflow-y:auto;padding:10px 12px;font-family:var(--mono);font-size:11px;
+    line-height:1.75;color:var(--dim)}
+  #wirelog .t{color:var(--amber-dim)}
+  #calls{margin-top:14px}
+  .callrow{display:flex;gap:10px;align-items:baseline;font-family:var(--mono);font-size:10.5px;
+    color:var(--dim);padding:5px 12px;border-bottom:1px solid var(--hair);flex-wrap:wrap}
+  .callrow:last-child{border-bottom:none}
+  .callrow .lb{color:var(--text);min-width:130px}
+  .callrow .cost{color:var(--amber);margin-left:auto}
+  .callbox{background:var(--panel);border:1px solid var(--hair);border-radius:10px;max-height:220px;overflow-y:auto}
+
+  /* ————— paper ————— */
+  .paper{background:var(--paper);color:var(--ink);border-radius:10px;padding:34px 40px;min-height:200px}
+  @media(max-width:700px){.paper{padding:22px 18px}}
+  .paper .micro{color:var(--ink-soft)}
+  .paper h2{font-family:var(--serif);font-weight:900;font-size:23px;margin-top:4px;color:var(--ink)}
+  .paper .sec{margin-top:26px}
+  .paper .sec .micro{border-bottom:1px solid rgba(37,34,27,.15);padding-bottom:4px;display:block}
+  .paper p{margin-top:13px;font-size:15px;line-height:1.75;color:var(--ink)}
+  .paper .cursor{display:inline-block;width:9px;height:17px;background:var(--amber);
+    vertical-align:text-bottom;animation:pulse 1s infinite}
+
+  /* ————— detail ————— */
+  .back{font-family:var(--mono);font-size:11px;letter-spacing:.12em;color:var(--dim);padding:4px 0}
+  .back:hover{color:var(--amber)}
+  .det-head{display:flex;gap:22px;margin-top:14px;align-items:flex-end;flex-wrap:wrap}
+  .det-cover{width:168px;height:168px;border-radius:10px;flex:none;overflow:hidden;
+    box-shadow:0 14px 34px rgba(0,0,0,.45)}
+  .det-cover svg{display:block;width:100%;height:100%}
+  .det-info{flex:1;min-width:240px}
+  .det-info h2{font-family:var(--serif);font-weight:900;font-size:29px;line-height:1.15;margin:4px 0 8px}
+  .chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+  .chip{font-family:var(--mono);font-size:10px;letter-spacing:.08em;color:var(--dim);
+    border:1px solid var(--hair);border-radius:5px;padding:3px 8px}
+  .chip.amber{color:var(--amber);border-color:var(--amber-dim)}
+  .det-actions{display:flex;gap:10px;margin-top:16px;flex-wrap:wrap}
+  .btn{font-family:var(--mono);font-size:11px;letter-spacing:.12em;padding:9px 16px;border-radius:8px;
+    border:1px solid var(--amber);color:var(--amber)}
+  .btn:hover{background:rgba(232,163,61,.1)}
+  .btn.solid{background:var(--amber);color:var(--bakelite);font-weight:500}
+  .btn.solid:hover{filter:brightness(1.08)}
+  .tabs{display:flex;gap:2px;margin:26px 0 14px;border-bottom:1px solid var(--hair);flex-wrap:wrap}
+  .tab{font-family:var(--mono);font-size:11px;letter-spacing:.12em;color:var(--dim);
+    padding:9px 14px;border-bottom:2px solid transparent;margin-bottom:-1px}
+  .tab.active{color:var(--amber);border-bottom-color:var(--amber)}
+  .tab:hover{color:var(--text)}
+  .angle-pills{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+  .pill{font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;color:var(--dim);
+    border:1px solid var(--hair);border-radius:20px;padding:5px 13px}
+  .pill.active{color:var(--bakelite);background:var(--amber);border-color:var(--amber)}
+  .notes{background:var(--panel);border:1px solid var(--hair);border-radius:10px;padding:6px 16px}
+  .note{padding:9px 0;border-bottom:1px solid var(--hair);font-size:13px;line-height:1.55;color:var(--text)}
+  .note:last-child{border-bottom:none}
+  .note a{font-family:var(--mono);font-size:10.5px;color:var(--teal);word-break:break-all}
+  .flagcard{background:var(--panel);border:1px solid var(--red);border-radius:10px;padding:13px 16px;margin-bottom:10px}
+  .flagcard .c{font-size:14px;font-style:italic}
+  .flagcard .r{margin-top:6px;font-size:12.5px;color:var(--dim)}
+  .flagcard .micro{color:var(--red)}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--faint);text-align:left;padding:9px 10px;border-bottom:1px solid var(--hair)}
+  td{padding:9px 10px;border-bottom:1px solid var(--hair);color:var(--dim);vertical-align:top}
+  td.hi{color:var(--text)}
+  td.num,th.num{text-align:right;font-family:var(--mono);font-size:11.5px}
+  td.cost{color:var(--amber)}
+  tr:hover td{background:rgba(255,255,255,.015)}
+  .tablebox{background:var(--panel);border:1px solid var(--hair);border-radius:10px;overflow:auto}
+
+  /* ————— ledger ————— */
+  .stat-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin:20px 0 22px}
+  .stat{background:var(--panel);border:1px solid var(--hair);border-radius:10px;padding:15px 17px}
+  .stat .v{font-family:var(--serif);font-weight:900;font-size:24px;color:var(--amber);margin-top:5px}
+  .stat .v.plain{color:var(--text)}
+  .bar{height:5px;border-radius:3px;background:var(--hair);overflow:hidden;display:flex;min-width:90px}
+  .bar i{height:100%}
+
+  /* ————— settings ————— */
+  .set-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;margin-top:20px}
+  .set-card{background:var(--panel);border:1px solid var(--hair);border-radius:12px;padding:18px}
+  .set-card>.micro{color:var(--amber);display:block;margin-bottom:4px}
+  .set-card .hint{font-size:12px;color:var(--faint);margin-bottom:12px}
+  .field{margin-top:11px}
+  .field label{display:block;font-family:var(--mono);font-size:10px;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--dim);margin-bottom:5px}
+  .field input,.field select{width:100%;background:var(--bakelite);border:1px solid var(--hair);
+    border-radius:8px;color:var(--text);font-size:13px;padding:9px 12px;outline:none}
+  .field input:focus,.field select:focus{border-color:var(--amber-dim)}
+  .keyrow{display:flex;align-items:center;gap:9px;padding:7px 0;font-family:var(--mono);font-size:11px;color:var(--dim)}
+  #save-note{color:var(--teal);font-family:var(--mono);font-size:11px;margin-left:12px;opacity:0;transition:opacity .3s}
+
+  /* ————— player ————— */
+  #player{position:fixed;left:0;right:0;bottom:0;background:rgba(28,26,22,.97);backdrop-filter:blur(8px);
+    border-top:1px solid var(--hair);display:none;align-items:center;gap:14px;padding:10px 18px;z-index:50}
+  #player.show{display:flex}
+  #pl-cover{width:46px;height:46px;border-radius:6px;overflow:hidden;flex:none}
+  #pl-cover svg{width:100%;height:100%;display:block}
+  #pl-info{min-width:0;width:190px;flex:none}
+  #pl-title{font-family:var(--serif);font-weight:700;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #pl-sub{font-family:var(--mono);font-size:9.5px;color:var(--dim);letter-spacing:.12em;margin-top:2px}
+  #pl-play{width:37px;height:37px;border-radius:50%;background:var(--amber);color:var(--bakelite);
+    flex:none;display:flex;align-items:center;justify-content:center}
+  #pl-play svg{width:14px;height:14px}
+  #pl-seek{flex:1;display:flex;align-items:center;gap:10px;min-width:120px}
+  #pl-seek .tm{font-family:var(--mono);font-size:10px;color:var(--dim);flex:none;width:38px}
+  #seek{flex:1;accent-color:var(--amber);height:4px;cursor:pointer}
+  #pl-close{color:var(--faint);font-size:17px;padding:6px}
+  #pl-close:hover{color:var(--text)}
+  #vu{display:flex;gap:2px;align-items:flex-end;height:20px;flex:none}
+  #vu i{width:3px;background:var(--amber);opacity:.85;height:4px;transition:height .12s}
+
+  @media(max-width:840px){
+    #app{grid-template-columns:64px 1fr}
+    #sidebar{padding:16px 8px 10px}
+    .brand h1,.brand .micro,.nav-item span.txt,#side-foot .row span{display:none}
+    .nav-item{justify-content:center;padding:11px 0}
+    .nav-item .lamp{margin-left:0;position:absolute;transform:translate(14px,-10px)}
+    #main{padding:20px 16px 130px}
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <aside id="sidebar">
+    <div class="brand">
+      <div class="micro">Documentary pipeline</div>
+      <h1>Deep Dive Studio</h1>
+    </div>
+    <nav id="nav"></nav>
+    <div id="side-foot">
+      <div class="row"><span class="lamp" id="lamp-provider"></span><span id="provider-label">provider</span></div>
+      <div class="row"><span class="lamp" id="lamp-job"></span><span id="job-label">studio quiet</span></div>
+    </div>
+  </aside>
+  <main id="main"></main>
+</div>
+
+<div id="player">
+  <div id="pl-cover"></div>
+  <div id="pl-info"><div id="pl-title"></div><div id="pl-sub">NOW PLAYING</div></div>
+  <button id="pl-play" title="Play/pause"></button>
+  <div id="pl-seek"><span class="tm" id="tm-cur">0:00</span><input id="seek" type="range" min="0" max="1000" value="0"/><span class="tm" id="tm-dur">0:00</span></div>
+  <div id="vu"><i></i><i></i><i></i><i></i><i></i></div>
+  <button id="pl-close" title="Close player">✕</button>
+</div>
+<audio id="audio"></audio>
+
+<script>
+"use strict";
+// ————————————————— constants mirroring src/prompts.ts (display only) —————————————————
+const ANGLES=[["history","History"],["technical","Technical"],["industry","Industry & players"],["sentiment","Sentiment & culture"],["future","The future"]];
+const SECTIONS=[["cold-open","Cold open"],["origins","Part 1 — Origins"],["how-it-works","Part 2 — How it works"],["industry","Part 3 — The industry"],["reception","Part 4 — Reception"],["today","Part 5 — The present"],["future","Part 6 — The future"],["closing","Closing"]];
+const NAV=[["studio","Studio","M3 10.5 12 3l9 7.5M5.5 9v10h13V9"],["onair","On Air","M12 9a3 3 0 1 1 0 6 3 3 0 0 1 0-6ZM5.6 5.6a9 9 0 0 0 0 12.8M18.4 5.6a9 9 0 0 1 0 12.8M8 8a5.5 5.5 0 0 0 0 8M16 8a5.5 5.5 0 0 1 0 8"],["ledger","Ledger","M4 4h16v16H4zM4 9h16M9 9v11"],["settings","Settings","M12 8.5a3.5 3.5 0 1 1 0 7 3.5 3.5 0 0 1 0-7Zm7.5 3.5-2-.6-.5-1.6 1-1.8-1.5-1.5-1.8 1-1.6-.5-.6-2h-2l-.6 2-1.6.5-1.8-1L4.5 8l1 1.8-.5 1.6-2 .6v2l2 .6.5 1.6-1 1.8L6 19.5l1.8-1 1.6.5.6 2h2l.6-2 1.6-.5 1.8 1 1.5-1.5-1-1.8.5-1.6 2-.6Z"]];
+
+// ————————————————— state —————————————————
+const S={
+  view:"studio", epSlug:null, episodes:[], recs:null, state:null,
+  job:null, // {slug,topic,startedAt,voice,mock}
+  lastJob:null, // sticky for post-run On Air view
+  logs:[], calls:[], liveSections:[], stages:{}, detail:null, detailTab:"script", angleSel:null,
+};
+const SET_KEY="dds-settings";
+function settings(){ try{return JSON.parse(localStorage.getItem(SET_KEY))||{};}catch{return{};} }
+function saveSettings(s){ localStorage.setItem(SET_KEY,JSON.stringify(s)); }
+
+// ————————————————— utils —————————————————
+const $=(id)=>document.getElementById(id);
+const esc=(s)=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+function fmtCost(v,provider){
+  if(v==null||v===0) return provider==="mock"?"$0.00":"—";
+  const s=v<0.01?"<$0.01":"$"+v.toFixed(2);
+  return provider==="mock"?s+" sim":s;
+}
+function fmtDate(iso){ try{return new Date(iso).toLocaleDateString([],{month:"short",day:"numeric"});}catch{return"";} }
+function fmtTime(s){ if(!isFinite(s))return"0:00"; s=Math.floor(s); return Math.floor(s/60)+":"+String(s%60).padStart(2,"0"); }
+function fmtTok(n){ return n==null?"—":n>=1000?(n/1000).toFixed(1)+"k":String(n); }
+async function api(path,opts){ const r=await fetch(path,opts); const j=await r.json().catch(()=>({})); if(!r.ok) throw new Error(j.error||r.status); return j; }
+
+// ————————————————— generative covers —————————————————
+function coverSVG(slug,size){
+  let h=2166136261; for(const ch of slug){h^=ch.charCodeAt(0);h=Math.imul(h,16777619);} h>>>=0;
+  const rnd=()=>{h^=h<<13;h^=h>>>17;h^=h<<5;h>>>=0;return h/4294967296;};
+  const accents=["#E8A33D","#6FB3A8","#C4553B","#D8CFB8"]; const acc=accents[Math.floor(rnd()*4)];
+  const bg=["#211E19","#1C1A16","#26231D"][Math.floor(rnd()*3)];
+  const kind=Math.floor(rnd()*5); let art="";
+  if(kind===0){ // scanlines
+    for(let y=8;y<160;y+=8){ const o=(0.06+rnd()*0.5).toFixed(2); art+=`<rect x="0" y="${y}" width="160" height="2.6" fill="${acc}" opacity="${o}"/>`; }
+  }else if(kind===1){ // interference rings
+    const cx=40+rnd()*80, cy=40+rnd()*80;
+    for(let r=8;r<180;r+=13){ art+=`<circle cx="${cx.toFixed(0)}" cy="${cy.toFixed(0)}" r="${r}" fill="none" stroke="${acc}" stroke-width="2" opacity="${(0.75-r/280).toFixed(2)}"/>`; }
+  }else if(kind===2){ // waveform
+    for(let x=6;x<160;x+=9){ const hh=8+rnd()*104; art+=`<rect x="${x}" y="${(80-hh/2).toFixed(0)}" width="4" height="${hh.toFixed(0)}" fill="${acc}" opacity="${(0.35+rnd()*0.6).toFixed(2)}"/>`; }
+  }else if(kind===3){ // phosphor dots
+    for(let y=12;y<160;y+=16)for(let x=12;x<160;x+=16){ if(rnd()<0.62) art+=`<circle cx="${x}" cy="${y}" r="${(1.4+rnd()*3.4).toFixed(1)}" fill="${acc}" opacity="${(0.25+rnd()*0.7).toFixed(2)}"/>`; }
+  }else{ // diagonal hatch
+    for(let i=-160;i<170;i+=14){ art+=`<line x1="${i}" y1="160" x2="${i+160}" y2="0" stroke="${acc}" stroke-width="${(1+rnd()*3).toFixed(1)}" opacity="${(0.14+rnd()*0.45).toFixed(2)}"/>`; }
+  }
+  const letter=(slug[0]||"d").toUpperCase();
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160" width="${size}" height="${size}">
+    <rect width="160" height="160" fill="${bg}"/>${art}
+    <rect width="160" height="160" fill="none" stroke="rgba(0,0,0,.4)" stroke-width="2"/>
+    <text x="14" y="146" font-family="Bitter,Georgia,serif" font-weight="900" font-size="46" fill="#EDE6D3" opacity=".93">${letter}</text>
+    <text x="146" y="22" text-anchor="end" font-family="'IBM Plex Mono',monospace" font-size="8" letter-spacing="2" fill="#EDE6D3" opacity=".55">DDS</text>
+  </svg>`;
+}
+
+// ————————————————— nav / router —————————————————
+function goto(hash){ location.hash=hash; }
+window.addEventListener("hashchange",route);
+function route(){
+  const h=location.hash.replace(/^#\/?/,"");
+  if(h.startsWith("ep/")){ S.view="detail"; S.epSlug=h.slice(3); loadDetail(); }
+  else { S.view=["studio","onair","ledger","settings"].includes(h)?h:"studio"; }
+  render();
+}
+function renderNav(){
+  $("nav").innerHTML=NAV.map(([id,label,d])=>`
+    <button class="nav-item ${S.view===id?"active":""}" onclick="goto('${id}')">
+      <svg class="glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="${d}"/></svg>
+      <span class="txt">${label}</span>
+      ${id==="onair"?`<span class="lamp ${S.job?"run":""}"></span>`:""}
+    </button>`).join("");
+  $("lamp-job").className="lamp "+(S.job?"run":"");
+  $("job-label").textContent=S.job?"on air":"studio quiet";
+}
+
+// ————————————————— render root —————————————————
+function render(){
+  renderNav();
+  const m=$("main");
+  if(S.view==="studio") m.innerHTML=viewStudio();
+  else if(S.view==="onair") m.innerHTML=viewOnAir();
+  else if(S.view==="ledger") m.innerHTML=viewLedger();
+  else if(S.view==="settings"){ m.innerHTML=viewSettings(); bindSettings(); }
+  else if(S.view==="detail") m.innerHTML=viewDetail();
+  if(S.view==="studio") bindComposer();
+  if(S.view==="onair"){ const w=$("wirelog"); if(w) w.scrollTop=w.scrollHeight; }
+}
+
+// ————————————————— studio view —————————————————
+function viewStudio(){
+  const st=settings();
+  const eps=S.episodes;
+  return `
+  <div class="micro" style="color:var(--amber)">Commission desk</div>
+  <div class="view-title">What do you want a deep dive on?</div>
+  <div class="view-sub">Five researchers fan out across the web, a fact-check desk quarantines weak claims, and a scriptwriter files a ~30-minute documentary. Optionally rendered to audio.</div>
+
+  <div id="composer">
+    <div class="micro">Episode topic</div>
+    <div class="compose-row">
+      <input id="topic" placeholder="TV display technology — CRT to OLED and beyond" autocomplete="off"/>
+      <button id="go">${S.job?"ON AIR…":"COMMISSION"}</button>
+    </div>
+    <input id="focus" placeholder="Angles you care about (optional) — e.g. the modern CRT revival, TCL and Hisense" autocomplete="off"/>
+    <div class="compose-foot">
+      <label class="toggle"><input type="checkbox" id="opt-voice" ${st.voice?"checked":""}/> RENDER AUDIO</label>
+      <label class="toggle"><input type="checkbox" id="opt-mock" ${st.mock?"checked":""}/> TEST FLIGHT</label>
+      <span class="compose-note">${S.job?`producing <b>${esc(S.job.topic)}</b> — <a href="#onair">watch on air</a>`:`~14 model calls · several minutes · test flight is free`}</span>
+    </div>
+  </div>
+
+  <div class="rail-head"><span class="micro">More rabbit holes</span>
+    <button class="aux" onclick="loadRecs(true)">refresh</button></div>
+  <div id="recs">${recsHTML()}</div>
+
+  <div class="rail-head"><span class="micro">Your library</span>
+    <span class="aux">${eps.length} episode${eps.length===1?"":"s"}</span></div>
+  <div id="grid">${eps.length?eps.map(cardHTML).join(""):`<div class="empty">Nothing on the shelf yet. Commission your first episode above — or flip on TEST FLIGHT and try the whole pipeline for free.</div>`}</div>`;
+}
+function recsHTML(){
+  if(!S.recs) return `<div class="rec"><div class="t">Loading suggestions…</div></div>`;
+  return S.recs.map(r=>`
+    <button class="rec" onclick="useRec(this)" data-topic="${esc(r.topic)}" data-focus="${esc(r.focus||"")}">
+      <div class="hook">${esc(r.hook||r.topic)}</div>
+      <div class="t">${esc(r.topic)}</div>
+      <div class="cta">LOAD INTO DESK →</div>
+    </button>`).join("");
+}
+function cardHTML(e){
+  const cost=fmtCost(e.cost&&e.cost.total,e.provider);
+  const status=e.status==="error"?`<span class="badge err">FAILED</span>`:e.status==="running"?`<span class="badge run">ON AIR</span>`:"";
+  return `<div class="card">
+    <button style="all:unset;cursor:pointer;display:block" onclick="goto('ep/${e.slug}')">
+      <div class="cover">${coverSVG(e.slug,"100%")}</div>
+      <div class="body">
+        <div class="name">${esc(e.topic)}</div>
+        <div class="meta">
+          ${status}
+          ${e.estMinutes?`<span>≈${e.estMinutes} MIN</span>`:""}
+          ${cost!=="—"?`<span class="badge cost">${cost}</span>`:""}
+          <span>${fmtDate(e.createdAt)}</span>
+        </div>
+      </div>
+    </button>
+    ${e.hasAudio?`<button class="playbtn" onclick="playEp('${e.slug}',this)" data-topic="${esc(e.topic)}" title="Play">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button>`:""}
+  </div>`;
+}
+function useRec(el){
+  goto("studio");
+  setTimeout(()=>{ $("topic").value=el.dataset.topic; $("focus").value=el.dataset.focus; $("topic").focus(); },0);
+}
+function bindComposer(){
+  const go=$("go"),topic=$("topic");
+  if(S.job){ go.disabled=true; topic.disabled=true; $("focus").disabled=true; return; }
+  const submit=async()=>{
+    const t=topic.value.trim(); if(!t) return;
+    const st=settings();
+    st.voice=$("opt-voice").checked; st.mock=$("opt-mock").checked; saveSettings(st);
+    go.disabled=true; go.textContent="DISPATCHING…";
+    try{
+      await api("/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({
+        topic:t,focus:$("focus").value.trim(),voice:st.voice,mock:st.mock,
+        models:{research:st.researchModel,factcheck:st.factcheckModel,writer:st.writerModel},
+        voiceProvider:st.voiceProvider||undefined,ttsModel:st.ttsModel,ttsVoice:st.ttsVoice,
+      })});
+      goto("onair");
+    }catch(e){ alert("Could not start: "+e.message); go.disabled=false; go.textContent="COMMISSION"; }
+  };
+  go.onclick=submit;
+  topic.onkeydown=(e)=>{ if(e.key==="Enter") submit(); };
+  $("focus").onkeydown=(e)=>{ if(e.key==="Enter") submit(); };
+}
+
+// ————————————————— on air view —————————————————
+function stageRow(id,label){
+  const st=S.stages[id]||{};
+  const cls=st.s==="run"?"on":st.s==="done"?"ok":st.s==="err"?"bad":"";
+  const det=st.s==="run"?"running":st.s==="done"?(st.detail||"done"):st.s==="err"?"failed":"standby";
+  return `<div class="stage ${cls}"><span class="lamp ${st.s==="run"?"run":st.s==="done"?"done":st.s==="err"?"err":""}"></span>
+    <span class="lbl">${esc(label)}</span><span class="det">${esc(det)}</span></div>`;
+}
+function viewOnAir(){
+  const job=S.job||S.lastJob;
+  const spend=S.calls.reduce((n,c)=>n+(c.cost||0),0);
+  const elapsed=job?Math.floor((Date.now()-job.startedAt)/1000):0;
+  const head=job?`
+    <div class="onair-head">
+      <span class="lamp ${S.job?"run":job.status==="error"?"err":"done"}"></span>
+      <div><div class="micro" style="color:${S.job?"var(--amber)":job.status==="error"?"var(--red)":"var(--teal)"}">${S.job?"On air":job.status==="error"?"Halted":"Wrapped"}</div>
+        <div class="onair-title">${esc(job.topic)}</div></div>
+      <div class="onair-stats">
+        <span>ELAPSED <b id="elapsed">${fmtTime(elapsed)}</b></span>
+        <span>CALLS <b>${S.calls.length}</b></span>
+        <span>SPEND <b>${fmtCost(spend,job.mock?"mock":"x")}</b></span>
+        ${job.mock?`<span style="color:var(--amber)">TEST FLIGHT</span>`:""}
+      </div>
+    </div>`:`
+    <div class="onair-head"><span class="lamp"></span>
+      <div><div class="micro" style="color:var(--faint)">Standby</div>
+      <div class="onair-title" style="color:var(--dim)">The studio is quiet</div></div>
+      <div class="onair-stats"><a href="#studio" style="font-family:var(--mono);font-size:11px">COMMISSION AN EPISODE →</a></div>
+    </div>`;
+  return `
+  <div class="micro" style="color:var(--amber)">Master control</div>
+  <div class="view-title">On Air</div>
+  <div class="view-sub">The production run sheet, the wire log, and every model call as it happens — your debug and technical view.</div>
+  ${head}
+  <div class="onair-cols">
+    <div>
+      <div class="runsheet">
+        <div class="rs-group"><span class="micro">Field research — parallel</span>
+          ${ANGLES.map(([id,l])=>stageRow("research/"+id,l)).join("")}</div>
+        <div class="rs-group"><span class="micro">Verification desk</span>
+          ${stageRow("factcheck","Cross-reference & quarantine")}</div>
+        <div class="rs-group"><span class="micro">Script desk — sequential</span>
+          ${SECTIONS.map(([id,l])=>stageRow("write/"+id,l)).join("")}</div>
+        ${(job&&job.voice)?`<div class="rs-group"><span class="micro">Voice booth</span>
+          ${SECTIONS.map(([id,l])=>stageRow("voice/"+id,l)).join("")}</div>`:""}
+      </div>
+      <div id="wirelog">${S.logs.map(l=>`<div><span class="t">${l.t}</span> ${esc(l.line)}</div>`).join("")||`<span style="color:var(--faint)">wire log idle…</span>`}</div>
+    </div>
+    <div>
+      <div class="micro" style="color:var(--faint);margin-bottom:8px">Live call telemetry</div>
+      <div class="callbox" id="calls">${S.calls.length?S.calls.map(c=>`
+        <div class="callrow"><span class="lb">${esc(c.label)}</span><span>${esc(c.model)}</span>
+          <span>${fmtTok(c.promptTokens)}→${fmtTok(c.completionTokens)} tok</span><span>${(c.ms/1000).toFixed(1)}s</span>
+          <span class="cost">${fmtCost(c.cost,c.provider)}</span></div>`).join("")
+        :`<div class="callrow" style="color:var(--faint)">no calls yet</div>`}</div>
+      <div class="micro" style="color:var(--faint);margin:16px 0 8px">Script — filing live</div>
+      <div class="paper">
+        <span class="micro">Deep Dive Studio · narration copy</span>
+        <h2>${esc(job?job.topic:"—")}</h2>
+        ${S.liveSections.map(s=>`<div class="sec"><span class="micro">${esc(s.label)}</span>${s.text.split(/\n\n+/).map(p=>`<p>${esc(p)}</p>`).join("")}</div>`).join("")}
+        ${S.job?`<p><span class="cursor"></span></p>`:S.liveSections.length?"":`<p style="color:var(--ink-soft);font-style:italic">The page is blank. For now.</p>`}
+      </div>
+    </div>
+  </div>`;
+}
+
+// ————————————————— ledger view —————————————————
+function viewLedger(){
+  const eps=S.episodes.filter(e=>e.cost);
+  const total=eps.reduce((n,e)=>n+(e.cost.total||0),0);
+  const words=S.episodes.reduce((n,e)=>n+(e.totalWords||0),0);
+  const mins=S.episodes.reduce((n,e)=>n+(e.estMinutes||0),0);
+  const stages=["research","factcheck","write","voice","recommend"];
+  const stageColors={research:"var(--teal)",factcheck:"#D8CFB8",write:"var(--amber)",voice:"var(--red)",recommend:"var(--faint)"};
+  const rows=eps.map(e=>{
+    const bs=e.cost.byStage||{}; const t=e.cost.total||0;
+    const bar=t?stages.map(s=>bs[s]?`<i style="width:${(bs[s]/t*100).toFixed(1)}%;background:${stageColors[s]}"></i>`:"").join(""):"";
+    return `<tr>
+      <td class="hi" style="cursor:pointer" onclick="goto('ep/${e.slug}')">${esc(e.topic)}</td>
+      <td>${fmtDate(e.createdAt)}</td>
+      <td class="num">${e.totalWords||"—"}</td>
+      <td class="num">${e.estMinutes?"≈"+e.estMinutes+"m":"—"}</td>
+      <td><div class="bar">${bar}</div></td>
+      <td class="num cost">${fmtCost(e.cost.total,e.provider)}</td></tr>`;
+  }).join("");
+  return `
+  <div class="micro" style="color:var(--amber)">Accounting</div>
+  <div class="view-title">Production Ledger</div>
+  <div class="view-sub">What each episode cost to make, by stage. OpenRouter reports exact per-call cost; the direct Anthropic path reports tokens only.</div>
+  <div class="stat-row">
+    <div class="stat"><span class="micro" style="color:var(--faint)">Episodes</span><div class="v plain">${S.episodes.length}</div></div>
+    <div class="stat"><span class="micro" style="color:var(--faint)">Total spend</span><div class="v">${total?"$"+total.toFixed(2):"—"}</div></div>
+    <div class="stat"><span class="micro" style="color:var(--faint)">Avg / episode</span><div class="v">${eps.length&&total?"$"+(total/eps.length).toFixed(2):"—"}</div></div>
+    <div class="stat"><span class="micro" style="color:var(--faint)">Runtime produced</span><div class="v plain">≈${mins} min</div></div>
+    <div class="stat"><span class="micro" style="color:var(--faint)">Words written</span><div class="v plain">${words.toLocaleString()}</div></div>
+  </div>
+  <div style="display:flex;gap:14px;margin-bottom:10px;flex-wrap:wrap">${stages.map(s=>`<span class="micro" style="color:var(--dim)"><i style="display:inline-block;width:9px;height:9px;background:${stageColors[s]};margin-right:5px"></i>${s}</span>`).join("")}</div>
+  <div class="tablebox"><table>
+    <thead><tr><th>Episode</th><th>Date</th><th class="num">Words</th><th class="num">Runtime</th><th>Cost by stage</th><th class="num">Total</th></tr></thead>
+    <tbody>${rows||`<tr><td colspan="6" style="color:var(--faint)">No cost data yet — episodes produced through this studio will appear here.</td></tr>`}</tbody>
+  </table></div>`;
+}
+
+// ————————————————— settings view —————————————————
+function viewSettings(){
+  const st=settings(); const sv=S.state||{};
+  const models=sv.models||{};
+  const key=(ok)=>`<span class="lamp ${ok?"done":""}" style="border-radius:50%"></span>`;
+  return `
+  <div class="micro" style="color:var(--amber)">Engineering</div>
+  <div class="view-title">Settings</div>
+  <div class="view-sub">Per-stage model routing, voice, and studio behavior. Saved in this browser; env vars in <span class="mono">.env</span> set the defaults.</div>
+  <div class="set-grid">
+    <div class="set-card">
+      <span class="micro">Model routing</span>
+      <div class="hint">Leave blank to use the server default. With OpenRouter use vendor slugs, e.g. <span class="mono">anthropic/claude-opus-4.8</span>.</div>
+      <div class="field"><label>Research model — default ${esc(models.research||"")}</label>
+        <input id="s-research" list="model-list" value="${esc(st.researchModel||"")}" placeholder="${esc(models.research||"")}"/></div>
+      <div class="field"><label>Fact-check model — default ${esc(models.factcheck||"")}</label>
+        <input id="s-factcheck" list="model-list" value="${esc(st.factcheckModel||"")}" placeholder="${esc(models.factcheck||"")}"/></div>
+      <div class="field"><label>Writer model — default ${esc(models.writer||"")}</label>
+        <input id="s-writer" list="model-list" value="${esc(st.writerModel||"")}" placeholder="${esc(models.writer||"")}"/></div>
+      <datalist id="model-list">
+        <option value="anthropic/claude-haiku-4.5"></option><option value="anthropic/claude-sonnet-4.6"></option>
+        <option value="anthropic/claude-opus-4.8"></option><option value="anthropic/claude-sonnet-5"></option>
+      </datalist>
+    </div>
+    <div class="set-card">
+      <span class="micro">Voice booth</span>
+      <div class="hint">ElevenLabs needs its own key; OpenRouter TTS runs on your OpenRouter key.</div>
+      <div class="field"><label>Voice provider</label>
+        <select id="s-voiceprov">
+          <option value="" ${!st.voiceProvider?"selected":""}>auto (${esc(sv.voiceProvider||"?")})</option>
+          <option value="openrouter" ${st.voiceProvider==="openrouter"?"selected":""}>openrouter</option>
+          <option value="elevenlabs" ${st.voiceProvider==="elevenlabs"?"selected":""}>elevenlabs</option>
+        </select></div>
+      <div class="field"><label>OpenRouter TTS model</label>
+        <input id="s-ttsmodel" value="${esc(st.ttsModel||"")}" placeholder="${esc(sv.ttsModel||"")}"/></div>
+      <div class="field"><label>TTS voice</label>
+        <input id="s-ttsvoice" value="${esc(st.ttsVoice||"")}" placeholder="${esc(sv.ttsVoice||"")}"/></div>
+    </div>
+    <div class="set-card">
+      <span class="micro">API keys</span>
+      <div class="hint">Stored in <span class="mono">.env</span> on this machine and applied immediately — never sent anywhere else. Leave a field blank to keep the current key; enter a value to replace it.</div>
+      <div class="field"><label>OpenRouter key ${sv.hasOpenrouterKey?'<span style="color:var(--teal)">— present</span>':'<span style="color:var(--red)">— missing</span>'}</label>
+        <input id="k-openrouter" type="password" autocomplete="off" placeholder="${sv.hasOpenrouterKey?"present — leave blank to keep":"sk-or-…"}"/></div>
+      <div class="field"><label>Anthropic key ${sv.hasAnthropicKey?'<span style="color:var(--teal)">— present</span>':'<span style="color:var(--dim)">— missing</span>'}</label>
+        <input id="k-anthropic" type="password" autocomplete="off" placeholder="${sv.hasAnthropicKey?"present — leave blank to keep":"sk-ant-…"}"/></div>
+      <div class="field"><label>ElevenLabs key ${sv.hasElevenlabsKey?'<span style="color:var(--teal)">— present</span>':'<span style="color:var(--dim)">— missing</span>'}</label>
+        <input id="k-elevenlabs" type="password" autocomplete="off" placeholder="${sv.hasElevenlabsKey?"present — leave blank to keep":"optional, for ElevenLabs voice"}"/></div>
+      <div style="margin-top:14px"><button class="btn solid" id="k-save">SAVE KEYS</button><span id="key-note" style="font-family:var(--mono);font-size:11px;margin-left:12px"></span></div>
+    </div>
+    <div class="set-card">
+      <span class="micro">Studio status</span>
+      <div class="hint">Read from the server environment at boot.</div>
+      <div class="keyrow">${key(sv.provider==="openrouter"?sv.hasOpenrouterKey:sv.hasAnthropicKey)} LLM provider: <b style="color:var(--text)">${esc(sv.provider||"?")}</b></div>
+      <div class="keyrow">${key(sv.hasOpenrouterKey)} OPENROUTER_API_KEY ${sv.hasOpenrouterKey?"present":"missing"}</div>
+      <div class="keyrow">${key(sv.hasAnthropicKey)} ANTHROPIC_API_KEY ${sv.hasAnthropicKey?"present":"missing"}</div>
+      <div class="keyrow">${key(sv.hasElevenlabsKey)} ELEVENLABS_API_KEY ${sv.hasElevenlabsKey?"present":"missing"}</div>
+      <div class="field" style="margin-top:14px"><label class="toggle" style="font-size:11px"><input type="checkbox" id="s-mock" ${st.mock?"checked":""}/> TEST FLIGHT MODE — canned pipeline, zero spend</label></div>
+      <div style="margin-top:16px"><button class="btn solid" id="s-save">SAVE SETTINGS</button><span id="save-note">saved</span></div>
+    </div>
+  </div>`;
+}
+function bindSettings(){
+  $("k-save").onclick=async()=>{
+    const body={};
+    const o=$("k-openrouter").value.trim(), a=$("k-anthropic").value.trim(), e=$("k-elevenlabs").value.trim();
+    if(o) body.openrouter=o; if(a) body.anthropic=a; if(e) body.elevenlabs=e;
+    const n=$("key-note");
+    if(!Object.keys(body).length){ n.style.color="var(--red)"; n.textContent="nothing entered"; return; }
+    try{
+      await api("/api/keys",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+      n.style.color="var(--teal)"; n.textContent="saved to .env";
+      await loadState(); // re-renders with fresh provider + key lamps
+    }catch(err){ n.style.color="var(--red)"; n.textContent=err.message; }
+  };
+  $("s-save").onclick=()=>{
+    const st=settings();
+    st.researchModel=$("s-research").value.trim(); st.factcheckModel=$("s-factcheck").value.trim();
+    st.writerModel=$("s-writer").value.trim(); st.voiceProvider=$("s-voiceprov").value||"";
+    st.ttsModel=$("s-ttsmodel").value.trim(); st.ttsVoice=$("s-ttsvoice").value.trim();
+    st.mock=$("s-mock").checked; saveSettings(st);
+    const n=$("save-note"); n.style.opacity=1; setTimeout(()=>n.style.opacity=0,1600);
+  };
+}
+
+// ————————————————— detail view —————————————————
+async function loadDetail(){
+  S.detail=null; S.detailTab="script"; S.angleSel=null;
+  try{ S.detail=await api("/api/episodes/"+S.epSlug); }catch(e){ S.detail={error:e.message}; }
+  render();
+}
+function viewDetail(){
+  const d=S.detail;
+  if(!d) return `<button class="back" onclick="history.back()">← BACK</button><p style="margin-top:20px;color:var(--dim)">Loading…</p>`;
+  if(d.error) return `<button class="back" onclick="history.back()">← BACK</button><p style="margin-top:20px;color:var(--red)">${esc(d.error)}</p>`;
+  const m=d.meta||{}; const cost=fmtCost(m.cost&&m.cost.total,m.provider);
+  const tabs=[["script","Script"],["research","Research"],["flags","Fact-check ("+(d.flags||[]).length+")"],["calls","Ledger"]];
+  return `
+  <button class="back" onclick="goto('studio')">← STUDIO</button>
+  <div class="det-head">
+    <div class="det-cover">${coverSVG(d.slug,"100%")}</div>
+    <div class="det-info">
+      <span class="micro" style="color:var(--amber)">Episode</span>
+      <h2>${esc(m.topic||d.slug)}</h2>
+      ${m.focus?`<div class="view-sub">Focus: ${esc(m.focus)}</div>`:""}
+      <div class="chips">
+        ${m.status==="error"?`<span class="chip" style="color:var(--red);border-color:var(--red)">FAILED: ${esc(m.error||"")}</span>`:""}
+        ${m.totalWords?`<span class="chip">${m.totalWords} WORDS</span>`:""}
+        ${m.estMinutes?`<span class="chip">≈${m.estMinutes} MIN</span>`:""}
+        ${cost!=="—"?`<span class="chip amber">${cost}</span>`:""}
+        ${m.provider?`<span class="chip">${esc(m.provider)}</span>`:""}
+        ${m.createdAt?`<span class="chip">${fmtDate(m.createdAt)}</span>`:""}
+      </div>
+      <div class="det-actions">
+        ${d.hasAudio?`<button class="btn solid" onclick="playEp('${d.slug}',this)" data-topic="${esc(m.topic||d.slug)}">▶&nbsp; PLAY EPISODE</button>`:""}
+        ${d.scriptTxt?`<button class="btn" onclick="copyScript()">COPY SCRIPT</button><button class="btn" onclick="downloadScript()">DOWNLOAD .TXT</button>`:""}
+      </div>
+    </div>
+  </div>
+  <div class="tabs">${tabs.map(([id,l])=>`<button class="tab ${S.detailTab===id?"active":""}" onclick="setTab('${id}')">${l}</button>`).join("")}</div>
+  <div id="tabbody">${detailTabHTML(d)}</div>`;
+}
+function setTab(t){ S.detailTab=t; render(); }
+function detailTabHTML(d){
+  const m=d.meta||{};
+  if(S.detailTab==="script"){
+    if(!d.sections.length) return `<p style="color:var(--faint)">No script on file${m.status==="running"?" yet — it's being written":""}.</p>`;
+    return `<div class="paper"><span class="micro">Deep Dive Studio · narration copy</span><h2>${esc(m.topic||d.slug)}</h2>
+      ${d.sections.map(s=>`<div class="sec"><span class="micro">${esc(s.label.toUpperCase())}</span>
+        ${s.text.split(/\n\n+/).map(p=>`<p>${esc(p)}</p>`).join("")}</div>`).join("")}</div>`;
+  }
+  if(S.detailTab==="research"){
+    if(!d.research.length) return `<p style="color:var(--faint)">No research files.</p>`;
+    const sel=S.angleSel||d.research[0].angle;
+    const file=d.research.find(r=>r.angle===sel)||d.research[0];
+    const notes=file.text.split("\n").filter(l=>l.trim().startsWith("-")).map(l=>{
+      const mm=/\((https?:\/\/[^\s)]+)\)\s*$/.exec(l); const t=l.replace(/^\s*-\s*/,"").replace(/\((https?:\/\/[^\s)]+)\)\s*$/,"");
+      return `<div class="note">${esc(t)}${mm?` <a href="${esc(mm[1])}" target="_blank" rel="noopener">${esc(mm[1].replace(/^https?:\/\//,"").slice(0,52))}</a>`:""}</div>`;
+    }).join("");
+    return `<div class="angle-pills">${d.research.map(r=>`<button class="pill ${r.angle===(S.angleSel||d.research[0].angle)?"active":""}" onclick="S.angleSel='${r.angle}';render()">${esc(r.angle)}</button>`).join("")}</div>
+      <div class="notes">${notes||`<div class="note" style="color:var(--faint)">No note lines.</div>`}</div>`;
+  }
+  if(S.detailTab==="flags"){
+    if(!(d.flags||[]).length) return `<p style="color:var(--teal);font-family:var(--mono);font-size:12px">VERIFICATION DESK REPORTS: nothing quarantined.</p>`;
+    return d.flags.map(f=>`<div class="flagcard"><span class="micro">Quarantined — the writer was barred from using this</span>
+      <div class="c">“${esc(f.claim)}”</div><div class="r">${esc(f.reason)}</div></div>`).join("");
+  }
+  // calls ledger
+  const calls=(m.calls||[]);
+  if(!calls.length) return `<p style="color:var(--faint)">No call records (episode may predate the studio UI).</p>`;
+  const rows=calls.map(c=>`<tr><td class="hi mono" style="font-size:11px">${esc(c.label)}</td><td>${esc(c.model)}</td>
+    <td class="num">${fmtTok(c.promptTokens)}</td><td class="num">${fmtTok(c.completionTokens)}</td>
+    <td class="num">${c.chars?c.chars.toLocaleString()+" ch":"—"}</td>
+    <td class="num">${(c.ms/1000).toFixed(1)}s</td><td class="num cost">${fmtCost(c.cost,c.provider)}</td></tr>`).join("");
+  const total=calls.reduce((n,c)=>n+(c.cost||0),0);
+  return `<div class="tablebox"><table>
+    <thead><tr><th>Call</th><th>Model</th><th class="num">In</th><th class="num">Out</th><th class="num">TTS</th><th class="num">Time</th><th class="num">Cost</th></tr></thead>
+    <tbody>${rows}</tbody>
+    <tfoot><tr><td colspan="6" class="hi" style="text-align:right;font-family:var(--mono);font-size:10px;letter-spacing:.14em">EPISODE TOTAL</td><td class="num cost">${fmtCost(total,m.provider)}</td></tr></tfoot>
+  </table></div>`;
+}
+function copyScript(){ if(S.detail&&S.detail.scriptTxt) navigator.clipboard.writeText(S.detail.scriptTxt); }
+function downloadScript(){
+  if(!(S.detail&&S.detail.scriptTxt)) return;
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(new Blob([S.detail.scriptTxt],{type:"text/plain"}));
+  a.download=S.epSlug+"-script.txt"; a.click(); URL.revokeObjectURL(a.href);
+}
+
+// ————————————————— player —————————————————
+const audio=$("audio");
+let vuTimer=null;
+function playEp(slug,btn){
+  const title=btn?(btn.dataset.topic||slug):slug;
+  $("pl-title").textContent=title;
+  $("pl-cover").innerHTML=coverSVG(slug,46);
+  audio.src="/api/episodes/"+slug+"/audio";
+  audio.play();
+  $("player").classList.add("show");
+}
+function setPlayIcon(){
+  $("pl-play").innerHTML=audio.paused
+    ?`<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>`
+    :`<svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>`;
+}
+$("pl-play").onclick=()=>{ audio.paused?audio.play():audio.pause(); };
+$("pl-close").onclick=()=>{ audio.pause(); $("player").classList.remove("show"); };
+audio.addEventListener("play",()=>{ setPlayIcon(); startVU(); });
+audio.addEventListener("pause",()=>{ setPlayIcon(); stopVU(); });
+audio.addEventListener("timeupdate",()=>{
+  $("tm-cur").textContent=fmtTime(audio.currentTime);
+  $("tm-dur").textContent=fmtTime(audio.duration);
+  if(isFinite(audio.duration)) $("seek").value=Math.round(audio.currentTime/audio.duration*1000);
+});
+$("seek").oninput=(e)=>{ if(isFinite(audio.duration)) audio.currentTime=e.target.value/1000*audio.duration; };
+function startVU(){ stopVU(); const bars=[...document.querySelectorAll("#vu i")];
+  vuTimer=setInterval(()=>bars.forEach(b=>b.style.height=(3+Math.random()*17)+"px"),130); }
+function stopVU(){ clearInterval(vuTimer); vuTimer=null;
+  document.querySelectorAll("#vu i").forEach(b=>b.style.height="4px"); }
+setPlayIcon();
+
+// ————————————————— log-line parsing → run sheet —————————————————
+function parseLog(line){
+  let m;
+  if((m=/^research\/([a-z-]+): dispatched/.exec(line))) S.stages["research/"+m[1]]={s:"run"};
+  else if((m=/^research\/([a-z-]+): (\d+) sourced notes/.exec(line))) S.stages["research/"+m[1]]={s:"done",detail:m[2]+" notes"};
+  else if(/^factcheck: cross-referencing/.test(line)) S.stages["factcheck"]={s:"run"};
+  else if((m=/^factcheck: (\d+) claim/.exec(line))) S.stages["factcheck"]={s:"done",detail:m[1]+" flagged"};
+  else if(/^factcheck: output unparseable/.test(line)) S.stages["factcheck"]={s:"done",detail:"unparseable"};
+  else if((m=/^write\/([a-z-]+): drafting/.exec(line))) S.stages["write/"+m[1]]={s:"run"};
+  else if((m=/^write\/([a-z-]+): (\d+) words/.exec(line))) S.stages["write/"+m[1]]={s:"done",detail:m[2]+" words"};
+  else if((m=/^voice\/([a-z-]+): rendering/.exec(line))){
+    for(const k in S.stages) if(k.startsWith("voice/")&&S.stages[k].s==="run") S.stages[k]={s:"done",detail:"rendered"};
+    S.stages["voice/"+m[1]]={s:"run"};
+  }
+  else if(/^Audio rendered:/.test(line)){
+    for(const k in S.stages) if(k.startsWith("voice/")&&S.stages[k].s==="run") S.stages[k]={s:"done",detail:"rendered"};
+  }
+  else if(/^PIPELINE HALT/.test(line)){
+    for(const k in S.stages) if(S.stages[k].s==="run") S.stages[k]={s:"err"};
+  }
+}
+
+// ————————————————— SSE —————————————————
+function connectSSE(){
+  const es=new EventSource("/api/events");
+  es.onmessage=(ev)=>{
+    let e; try{ e=JSON.parse(ev.data); }catch{ return; }
+    if(e.type==="hello"){ if(e.activeJob){ S.job=e.activeJob; } render(); return; }
+    if(e.type==="log"){
+      S.logs.push({t:new Date(e.t).toLocaleTimeString([],{hour12:false}),line:e.line});
+      if(S.logs.length>600) S.logs.shift();
+      parseLog(e.line);
+      if(S.view==="onair") render();
+      return;
+    }
+    if(e.type==="call"){
+      S.calls.push(e); if(S.calls.length>600) S.calls.shift();
+      if(S.view==="onair") render();
+      return;
+    }
+    if(e.type==="section"){
+      S.liveSections.push({label:e.label,text:e.text});
+      if(S.view==="onair") render();
+      return;
+    }
+    if(e.type==="job"){
+      if(e.status==="started"){
+        S.job={slug:e.slug,topic:e.topic,startedAt:Date.now(),voice:e.voice,mock:e.mock};
+        S.logs=[];S.calls=[];S.liveSections=[];S.stages={};
+      }else{
+        S.lastJob=Object.assign({},S.job||{slug:e.slug,topic:e.topic,startedAt:Date.now()},{status:e.status});
+        S.job=null;
+        loadEpisodes();
+      }
+      render();
+    }
+  };
+  es.onerror=()=>{ es.close(); setTimeout(connectSSE,2500); };
+}
+
+// elapsed ticker without full re-render
+setInterval(()=>{
+  if(S.job&&S.view==="onair"){ const el=$("elapsed"); if(el) el.textContent=fmtTime(Math.floor((Date.now()-S.job.startedAt)/1000)); }
+},1000);
+
+// ————————————————— data loading —————————————————
+async function loadEpisodes(){
+  try{ S.episodes=await api("/api/episodes"); }catch{ S.episodes=[]; }
+  if(S.view==="studio"||S.view==="ledger") render();
+}
+async function loadState(){
+  try{
+    S.state=await api("/api/state");
+    $("provider-label").textContent=S.state.provider;
+    const ok=S.state.provider==="openrouter"?S.state.hasOpenrouterKey:S.state.hasAnthropicKey;
+    $("lamp-provider").className="lamp "+(ok?"done":"err");
+    if(S.state.activeJob&&!S.job){ S.job=S.state.activeJob; }
+  }catch{}
+  render();
+}
+async function loadRecs(force){
+  if(S.recs&&!force) return;
+  S.recs=null; if(S.view==="studio") render();
+  try{
+    const st=settings();
+    const r=await api("/api/recommendations",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({topics:S.episodes.map(e=>e.topic).slice(0,20),mock:!!st.mock})});
+    S.recs=r.suggestions||[];
+  }catch{ S.recs=[]; }
+  if(S.view==="studio") render();
+}
+
+// ————————————————— boot —————————————————
+window.goto=goto; window.useRec=useRec; window.playEp=playEp; window.setTab=setTab;
+window.loadRecs=loadRecs; window.copyScript=copyScript; window.downloadScript=downloadScript;
+connectSSE();
+route();
+loadState();
+loadEpisodes().then(()=>loadRecs(false));
+</script>
+</body>
+</html>
