@@ -5,15 +5,17 @@ function parseArgs(argv: string[]): {
   topic?: string;
   focus?: string;
   voice: boolean;
+  resume: boolean;
   outDir: string;
   researchModel?: string;
   factcheckModel?: string;
   writerModel?: string;
 } {
-  const out = { voice: false, outDir: "output" } as {
+  const out = { voice: false, resume: false, outDir: "output" } as {
     topic?: string;
     focus?: string;
     voice: boolean;
+    resume: boolean;
     outDir: string;
     researchModel?: string;
     factcheckModel?: string;
@@ -24,6 +26,7 @@ function parseArgs(argv: string[]): {
     if (a === "--topic") out.topic = argv[++i];
     else if (a === "--focus") out.focus = argv[++i];
     else if (a === "--voice") out.voice = true;
+    else if (a === "--resume") out.resume = true;
     else if (a === "--out") out.outDir = argv[++i];
     else if (a === "--research-model") out.researchModel = argv[++i];
     else if (a === "--factcheck-model") out.factcheckModel = argv[++i];
@@ -35,7 +38,7 @@ function parseArgs(argv: string[]): {
 const args = parseArgs(process.argv.slice(2));
 if (!args.topic) {
   console.error(
-    'Usage: npm run generate -- --topic "TV display technology" [--focus "..."] [--voice] [--out dir]\n' +
+    'Usage: npm run generate -- --topic "TV display technology" [--focus "..."] [--voice] [--resume] [--out dir]\n' +
       "       [--research-model <id>] [--factcheck-model <id>] [--writer-model <id>]"
   );
   process.exit(1);
@@ -53,7 +56,7 @@ log(
 
 produceEpisode(
   { topic: args.topic, focus: args.focus },
-  { voice: args.voice, outDir: args.outDir }
+  { voice: args.voice, resume: args.resume, outDir: args.outDir }
 ).catch((err) => {
   log(`PIPELINE HALT — ${err instanceof Error ? err.message : String(err)}`);
   process.exit(1);

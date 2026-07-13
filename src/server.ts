@@ -1,14 +1,16 @@
 import { createServer } from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { createReadStream, existsSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { createReadStream, existsSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { CONFIG, reconfigure } from "./config.js";
 import { resetClient } from "./anthropic.js";
 import { complete, runtime } from "./llm.js";
+import { recommendationPrompt, SECTIONS } from "./prompts.js";
 import { onCall } from "./telemetry.js";
 import { log, produceEpisode, slugify } from "./pipeline.js";
-import type { EpisodeMeta, Flag } from "./types.js";
+import { runVoice, supportsLongFormTts } from "./stages/voice.js";
+import type { EpisodeMeta, Flag, WrittenSection } from "./types.js";
 
 /**
  * Deep Dive Studio UI server. Zero dependencies beyond node:http — serves the
@@ -26,6 +28,7 @@ const UI_FILE = join(ROOT, "ui", "index.html");
 // The server owns model overrides per job; remember the configured defaults
 // (refreshed when API keys change, since defaults are per-provider).
 let DEFAULT_MODELS = { ...CONFIG.models };
+let DEFAULT_RECOMMEND_MODEL = CONFIG.recommendModel;
 
 // ————————————————— API keys (written to .env, applied live) —————————————————
 
@@ -69,6 +72,8 @@ function applyKeys(body: Record<string, unknown>): void {
   reconfigure();
   resetClient();
   DEFAULT_MODELS = { ...CONFIG.models };
+  DEFAULT_RECOMMEND_MODEL = CONFIG.recommendModel;
+  catalogCache = null;
   log(`API keys updated (${Object.keys(updates).join(", ")}) — provider now ${CONFIG.provider}`);
 }
 
@@ -99,10 +104,32 @@ interface GenerateBody {
   focus?: string;
   voice?: boolean;
   mock?: boolean;
+  resume?: boolean;
   models?: { research?: string; factcheck?: string; writer?: string };
   voiceProvider?: "elevenlabs" | "openrouter";
   ttsModel?: string;
   ttsVoice?: string;
+  ttsSpeed?: number;
+}
+
+function normalizeModelId(value: string | undefined): string | undefined {
+  const raw = value?.trim();
+  if (!raw) return undefined;
+  const candidate = raw.split(/\s+(?:—|--?)\s+/).at(-1)?.trim() ?? raw;
+  return candidate && !/\s/.test(candidate) ? candidate : raw;
+}
+
+function applyVoiceSettings(body: GenerateBody): void {
+  if (body.voiceProvider) CONFIG.voice.provider = body.voiceProvider;
+  const ttsModel = normalizeModelId(body.ttsModel);
+  if (ttsModel) CONFIG.voice.openrouterModel = ttsModel;
+  if (body.ttsVoice?.trim()) CONFIG.voice.openrouterVoice = body.ttsVoice.trim();
+  if (body.ttsSpeed != null) {
+    if (!Number.isFinite(body.ttsSpeed) || body.ttsSpeed < 0.5 || body.ttsSpeed > 2) {
+      throw new HttpError(400, "ttsSpeed must be between 0.5 and 2");
+    }
+    CONFIG.voice.speed = body.ttsSpeed;
+  }
 }
 
 function startJob(body: GenerateBody): { slug: string } {
@@ -111,12 +138,10 @@ function startJob(body: GenerateBody): { slug: string } {
   if (activeJob) throw new HttpError(409, `Already producing "${activeJob.topic}"`);
 
   runtime.mock = !!body.mock;
-  CONFIG.models.research = body.models?.research?.trim() || DEFAULT_MODELS.research;
-  CONFIG.models.factcheck = body.models?.factcheck?.trim() || DEFAULT_MODELS.factcheck;
-  CONFIG.models.writer = body.models?.writer?.trim() || DEFAULT_MODELS.writer;
-  if (body.voiceProvider) CONFIG.voice.provider = body.voiceProvider;
-  if (body.ttsModel?.trim()) CONFIG.voice.openrouterModel = body.ttsModel.trim();
-  if (body.ttsVoice?.trim()) CONFIG.voice.openrouterVoice = body.ttsVoice.trim();
+  CONFIG.models.research = normalizeModelId(body.models?.research) || DEFAULT_MODELS.research;
+  CONFIG.models.factcheck = normalizeModelId(body.models?.factcheck) || DEFAULT_MODELS.factcheck;
+  CONFIG.models.writer = normalizeModelId(body.models?.writer) || DEFAULT_MODELS.writer;
+  applyVoiceSettings(body);
 
   // Test flight fabricates text only; skip TTS so no real key is needed.
   const voice = runtime.mock ? false : !!body.voice;
@@ -136,6 +161,7 @@ function startJob(body: GenerateBody): { slug: string } {
     { topic, focus: body.focus?.trim() || undefined },
     {
       voice,
+      resume: !!body.resume,
       outDir: OUT_DIR,
       log: jobLog,
       onSection: (s) =>
@@ -242,6 +268,61 @@ function readEpisode(slug: string): unknown {
   };
 }
 
+function startVoiceJob(slug: string, body: GenerateBody): { slug: string } {
+  if (activeJob) throw new HttpError(409, `Already producing "${activeJob.topic}"`);
+  const dir = join(OUT_DIR, slug);
+  const metaPath = join(dir, "meta.json");
+  const meta = readJson<EpisodeMeta>(metaPath);
+  const episode = readEpisode(slug) as {
+    sections: { label: string; text: string }[];
+  };
+  if (!meta || !episode.sections.length) throw new HttpError(400, "This episode has no saved script to narrate");
+
+  applyVoiceSettings(body);
+  runtime.mock = false;
+  const sections: WrittenSection[] = episode.sections.map((section, index) => ({
+    id: SECTIONS[index]?.id ?? `section-${index + 1}`,
+    label: section.label,
+    text: section.text,
+    words: section.text.trim().split(/\s+/).filter(Boolean).length,
+  }));
+  const calls: EpisodeMeta["calls"] = [];
+  const unsubscribe = onCall((event) => {
+    if (event.label.startsWith("voice/")) calls.push(event);
+  });
+  activeJob = {
+    slug,
+    topic: meta.topic,
+    startedAt: Date.now(),
+    voice: true,
+    mock: false,
+  };
+  const jobLog = (line: string) => {
+    log(line);
+    broadcast({ type: "log", t: Date.now(), line });
+  };
+  broadcast({ type: "job", status: "started", slug, topic: meta.topic, voice: true, mock: false });
+
+  void runVoice(sections, jobLog)
+    .then((mp3) => {
+      writeFileSync(join(dir, "episode.mp3"), mp3);
+      meta.voice = true;
+      meta.calls = [...(meta.calls ?? []), ...calls];
+      writeFileSync(metaPath, `${JSON.stringify(meta, null, 2)}\n`);
+      jobLog(`Audio rendered: ${join(dir, "episode.mp3")}`);
+      broadcast({ type: "job", status: "done", slug });
+    })
+    .catch((err) => {
+      jobLog(`PIPELINE HALT — ${err instanceof Error ? err.message : String(err)}`);
+      broadcast({ type: "job", status: "error", slug });
+    })
+    .finally(() => {
+      unsubscribe();
+      activeJob = null;
+    });
+  return { slug };
+}
+
 // ————————————————— recommendations —————————————————
 
 const STARTER_SUGGESTIONS = [
@@ -251,24 +332,96 @@ const STARTER_SUGGESTIONS = [
   { topic: "Air traffic control", focus: "why the system still runs on decades-old technology", hook: "The invisible machine above you." },
 ];
 
-async function recommend(pastTopics: string[]): Promise<unknown> {
+async function recommend(
+  pastTopics: string[],
+  modelOverride?: string,
+  avoidTopics: string[] = []
+): Promise<{ suggestions: unknown[]; source: string }> {
   if (!pastTopics.length) return { suggestions: STARTER_SUGGESTIONS, source: "starter" };
   const hasKey = CONFIG.provider === "openrouter" ? !!CONFIG.openrouter.apiKey : !!process.env.ANTHROPIC_API_KEY;
   if (!hasKey && !runtime.mock) return { suggestions: STARTER_SUGGESTIONS, source: "starter" };
   const raw = await complete({
-    model: CONFIG.models.research,
+    model: normalizeModelId(modelOverride) || DEFAULT_RECOMMEND_MODEL,
     maxTokens: 700,
     label: "recommend",
-    prompt: `You commission episodes for a single-narrator documentary podcast about technology, industry, and material culture. A listener has already enjoyed deep dives on these topics:
-${pastTopics.map((t) => `- ${t}`).join("\n")}
-
-Suggest 4 NEW episode topics they would fall down a rabbit hole for — adjacent curiosities, not repeats. Respond ONLY with JSON, no markdown fences: {"suggestions":[{"topic":"...","focus":"one steering line for the researchers","hook":"one dry, intriguing sentence"}]}`,
+    prompt: recommendationPrompt(pastTopics, avoidTopics),
   });
   const clean = raw.replace(/```json|```/g, "").trim();
   const parsed = JSON.parse(clean.slice(clean.indexOf("{"), clean.lastIndexOf("}") + 1)) as {
     suggestions?: unknown[];
   };
   return { suggestions: parsed.suggestions ?? [], source: "model" };
+}
+
+interface CatalogModel {
+  id: string;
+  name: string;
+  voices: string[];
+  longForm: boolean;
+  contextLength?: number;
+}
+
+interface OpenRouterModelRecord {
+  id?: string;
+  name?: string;
+  supported_voices?: string[] | null;
+  context_length?: number | null;
+}
+
+let catalogCache: { expiresAt: number; value: unknown } | null = null;
+
+function mapCatalogModels(records: OpenRouterModelRecord[]): CatalogModel[] {
+  return records
+    .filter((model): model is OpenRouterModelRecord & { id: string } => typeof model.id === "string")
+    .map((model) => ({
+      id: model.id,
+      name: model.name?.trim() || model.id,
+      voices: Array.isArray(model.supported_voices)
+        ? model.supported_voices.filter((voice): voice is string => typeof voice === "string")
+        : [],
+      longForm: supportsLongFormTts(model.id),
+      ...(typeof model.context_length === "number" ? { contextLength: model.context_length } : {}),
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+async function getModelCatalog(): Promise<unknown> {
+  if (catalogCache && catalogCache.expiresAt > Date.now()) return catalogCache.value;
+  const headers: Record<string, string> = { Accept: "application/json" };
+  if (CONFIG.openrouter.apiKey) headers.Authorization = `Bearer ${CONFIG.openrouter.apiKey}`;
+
+  const fetchModels = async (modality: "text" | "speech"): Promise<CatalogModel[]> => {
+    const res = await fetch(`${CONFIG.openrouter.baseUrl}/models?output_modalities=${modality}`, { headers });
+    if (!res.ok) throw new Error(`OpenRouter model catalog ${res.status}`);
+    const json = (await res.json()) as { data?: OpenRouterModelRecord[] };
+    return mapCatalogModels(Array.isArray(json.data) ? json.data : []);
+  };
+
+  let models: CatalogModel[];
+  let ttsModels: CatalogModel[];
+  try {
+    [models, ttsModels] = await Promise.all([
+      CONFIG.provider === "openrouter"
+        ? fetchModels("text")
+        : Promise.resolve(
+            [...new Set(Object.values(DEFAULT_MODELS))].map((id) => ({ id, name: id, voices: [], longForm: true }))
+          ),
+      fetchModels("speech"),
+    ]);
+  } catch (err) {
+    log(`Model catalog fallback: ${err instanceof Error ? err.message : String(err)}`);
+    models = [...new Set(Object.values(DEFAULT_MODELS))].map((id) => ({ id, name: id, voices: [], longForm: true }));
+    ttsModels = [{
+      id: CONFIG.voice.openrouterModel,
+      name: CONFIG.voice.openrouterModel,
+      voices: [CONFIG.voice.openrouterVoice],
+      longForm: supportsLongFormTts(CONFIG.voice.openrouterModel),
+    }];
+  }
+
+  const value = { provider: CONFIG.provider, models, ttsModels };
+  catalogCache = { expiresAt: Date.now() + 10 * 60 * 1000, value };
+  return value;
 }
 
 // ————————————————— http plumbing —————————————————
@@ -357,10 +510,11 @@ const server = createServer(async (req, res) => {
     if (req.method === "GET" && path === "/api/state") {
       sendJson(res, 200, {
         provider: CONFIG.provider,
-        models: DEFAULT_MODELS,
+        models: { ...DEFAULT_MODELS, recommend: DEFAULT_RECOMMEND_MODEL },
         voiceProvider: CONFIG.voice.provider,
         ttsModel: CONFIG.voice.openrouterModel,
         ttsVoice: CONFIG.voice.openrouterVoice,
+        ttsSpeed: CONFIG.voice.speed,
         hasOpenrouterKey: !!CONFIG.openrouter.apiKey,
         hasAnthropicKey: !!process.env.ANTHROPIC_API_KEY,
         hasElevenlabsKey: !!CONFIG.elevenlabs.apiKey,
@@ -374,13 +528,37 @@ const server = createServer(async (req, res) => {
       return;
     }
 
+    if (req.method === "GET" && path === "/api/catalog") {
+      sendJson(res, 200, await getModelCatalog());
+      return;
+    }
+
     const epMatch = /^\/api\/episodes\/([a-z0-9-]+)$/.exec(path);
     if (req.method === "GET" && epMatch) {
       sendJson(res, 200, readEpisode(epMatch[1]));
       return;
     }
+    if (req.method === "DELETE" && epMatch) {
+      const slug = epMatch[1];
+      if (activeJob?.slug === slug) {
+        throw new HttpError(409, "Can't delete an episode while it is producing");
+      }
+      const dir = join(OUT_DIR, slug);
+      if (!existsSync(dir) || !statSync(dir).isDirectory()) {
+        throw new HttpError(404, "No such episode");
+      }
+      rmSync(dir, { recursive: true, force: true });
+      log(`Deleted episode: ${slug}`);
+      sendJson(res, 200, { deleted: slug });
+      return;
+    }
 
     const audioMatch = /^\/api\/episodes\/([a-z0-9-]+)\/audio$/.exec(path);
+    if (req.method === "POST" && audioMatch) {
+      const body = JSON.parse((await readBody(req)) || "{}") as GenerateBody;
+      sendJson(res, 202, startVoiceJob(audioMatch[1], body));
+      return;
+    }
     if (req.method === "GET" && audioMatch) {
       serveAudio(req, res, audioMatch[1]);
       return;
@@ -390,8 +568,11 @@ const server = createServer(async (req, res) => {
       applyKeys(JSON.parse((await readBody(req)) || "{}") as Record<string, unknown>);
       sendJson(res, 200, {
         provider: CONFIG.provider,
-        models: DEFAULT_MODELS,
+        models: { ...DEFAULT_MODELS, recommend: DEFAULT_RECOMMEND_MODEL },
         voiceProvider: CONFIG.voice.provider,
+        ttsModel: CONFIG.voice.openrouterModel,
+        ttsVoice: CONFIG.voice.openrouterVoice,
+        ttsSpeed: CONFIG.voice.speed,
         hasOpenrouterKey: !!CONFIG.openrouter.apiKey,
         hasAnthropicKey: !!process.env.ANTHROPIC_API_KEY,
         hasElevenlabsKey: !!CONFIG.elevenlabs.apiKey,
@@ -406,9 +587,33 @@ const server = createServer(async (req, res) => {
     }
 
     if (req.method === "POST" && path === "/api/recommendations") {
-      const body = JSON.parse((await readBody(req)) || "{}") as { topics?: string[]; mock?: boolean };
+      const body = JSON.parse((await readBody(req)) || "{}") as {
+        topics?: string[];
+        avoid?: string[];
+        mock?: boolean;
+        model?: string;
+      };
       runtime.mock = !!body.mock;
-      sendJson(res, 200, await recommend(body.topics ?? []));
+      try {
+        sendJson(res, 200, await recommend(body.topics ?? [], body.model, body.avoid ?? []));
+      } catch (err) {
+        const warning = err instanceof Error ? err.message : String(err);
+        const selectedModel = normalizeModelId(body.model);
+        if (selectedModel && selectedModel !== DEFAULT_RECOMMEND_MODEL) {
+          try {
+            const retry = await recommend(body.topics ?? [], undefined, body.avoid ?? []);
+            log(`Recommendation model ${selectedModel} failed; used ${DEFAULT_RECOMMEND_MODEL}: ${warning}`);
+            sendJson(res, 200, { ...retry, source: "model-default", warning });
+            return;
+          } catch (retryErr) {
+            const retryWarning = retryErr instanceof Error ? retryErr.message : String(retryErr);
+            log(`Recommendations fallback: ${warning}; default retry: ${retryWarning}`);
+          }
+        } else {
+          log(`Recommendations fallback: ${warning}`);
+        }
+        sendJson(res, 200, { suggestions: STARTER_SUGGESTIONS, source: "fallback", warning });
+      }
       return;
     }
 

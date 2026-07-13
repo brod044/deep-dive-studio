@@ -15,6 +15,8 @@ export async function runFactcheck(
     maxTokens: CONFIG.tokens.factcheck,
     prompt: factcheckPrompt(topic, research),
     label: "factcheck",
+    responseFormat: "json_object",
+    reasoningEffort: "minimal",
   });
   try {
     const clean = raw.replace(/```json|```/g, "").trim();

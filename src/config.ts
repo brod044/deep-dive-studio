@@ -9,6 +9,11 @@ function env(name: string): string | undefined {
   return v ? v : undefined;
 }
 
+function numberEnv(name: string, fallback: number): number {
+  const value = Number(env(name));
+  return Number.isFinite(value) ? value : fallback;
+}
+
 // Per-stage defaults for each provider. OpenRouter uses vendor-prefixed slugs.
 const MODEL_DEFAULTS: Record<
   LlmProvider,
@@ -50,9 +55,11 @@ export const CONFIG = {
     // Best available writer for the narration itself.
     writer: env("WRITER_MODEL") ?? MODEL_DEFAULTS[provider].writer,
   },
+  // Lightweight commissioning call used to suggest the next four topics.
+  recommendModel: env("RECOMMEND_MODEL") ?? MODEL_DEFAULTS[provider].research,
   tokens: {
     research: 5000, // dense, figure-heavy notes need headroom
-    factcheck: 2000,
+    factcheck: 5000, // reasoning models need headroom before emitting JSON
     section: 1600, // ~1,200 words ceiling per section
   },
   searchesPerAngle: 10,
@@ -61,8 +68,10 @@ export const CONFIG = {
     // ElevenLabs if its key is set, else OpenRouter TTS; force with VOICE_PROVIDER.
     provider: (env("VOICE_PROVIDER") ??
       (env("ELEVENLABS_API_KEY") ? "elevenlabs" : "openrouter")) as VoiceProvider,
-    openrouterModel: env("TTS_MODEL") ?? "openai/gpt-4o-mini-tts-2025-12-15",
-    openrouterVoice: env("TTS_VOICE") ?? "onyx",
+    openrouterModel: env("TTS_MODEL") ?? "microsoft/mai-voice-2",
+    openrouterVoice: env("TTS_VOICE") ?? "en-US-Harper:MAI-Voice-2",
+    speed: Math.min(2, Math.max(0.5, numberEnv("TTS_SPEED", 0.9))),
+    chunkChars: Math.min(3900, Math.max(800, numberEnv("TTS_CHUNK_CHARS", 3000))),
   },
   elevenlabs: {
     apiKey: env("ELEVENLABS_API_KEY") ?? "",
@@ -82,7 +91,12 @@ export function reconfigure(): void {
   CONFIG.models.research = env("RESEARCH_MODEL") ?? MODEL_DEFAULTS[p].research;
   CONFIG.models.factcheck = env("FACTCHECK_MODEL") ?? MODEL_DEFAULTS[p].factcheck;
   CONFIG.models.writer = env("WRITER_MODEL") ?? MODEL_DEFAULTS[p].writer;
+  CONFIG.recommendModel = env("RECOMMEND_MODEL") ?? MODEL_DEFAULTS[p].research;
   CONFIG.voice.provider = (env("VOICE_PROVIDER") ??
     (env("ELEVENLABS_API_KEY") ? "elevenlabs" : "openrouter")) as VoiceProvider;
+  CONFIG.voice.openrouterModel = env("TTS_MODEL") ?? "microsoft/mai-voice-2";
+  CONFIG.voice.openrouterVoice = env("TTS_VOICE") ?? "en-US-Harper:MAI-Voice-2";
+  CONFIG.voice.speed = Math.min(2, Math.max(0.5, numberEnv("TTS_SPEED", 0.9)));
+  CONFIG.voice.chunkChars = Math.min(3900, Math.max(800, numberEnv("TTS_CHUNK_CHARS", 3000)));
   CONFIG.elevenlabs.apiKey = env("ELEVENLABS_API_KEY") ?? "";
 }

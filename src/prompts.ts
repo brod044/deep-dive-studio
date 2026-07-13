@@ -139,6 +139,17 @@ export const SECTIONS: Section[] = [
 
 // ————————————————— prompt builders —————————————————
 
+export function recommendationPrompt(pastTopics: string[], avoidTopics: string[] = []): string {
+  const avoid = avoidTopics.length
+    ? `\nThe previous suggestion set was:\n${avoidTopics.map((topic) => `- ${topic}`).join("\n")}\nDo not repeat or lightly reword any of those suggestions.`
+    : "";
+  return `You commission episodes for a single-narrator documentary podcast about technology, industry, and material culture. A listener has already enjoyed deep dives on these topics:
+${pastTopics.map((topic) => `- ${topic}`).join("\n")}
+${avoid}
+
+Suggest 4 NEW episode topics they would fall down a rabbit hole for — adjacent curiosities, not repeats. Respond ONLY with JSON, no markdown fences: {"suggestions":[{"topic":"...","focus":"one steering line for the researchers","hook":"one dry, intriguing sentence"}]}`;
+}
+
 export function factcheckPrompt(topic: string, research: ResearchFile[]): string {
   const files = research
     .map((r) => `=== ${r.angleId.toUpperCase()} FILE ===\n${r.notes}`)

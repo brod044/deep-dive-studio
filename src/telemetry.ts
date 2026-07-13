@@ -11,6 +11,8 @@ export interface CallEvent {
   ms: number;
   promptTokens?: number;
   completionTokens?: number;
+  reasoningTokens?: number;
+  webSources?: number; // unique URL citations returned by web search
   cost?: number; // USD; exact on OpenRouter, absent where unknown
   chars?: number; // TTS input size
 }

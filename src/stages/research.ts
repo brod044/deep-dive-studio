@@ -15,17 +15,30 @@ export async function runResearch(
   const results = await Promise.all(
     ANGLES.map(async (angle) => {
       onProgress(`research/${angle.id}: dispatched`);
-      const notes = await complete({
+      const rawNotes = await complete({
         model: CONFIG.models.research,
         maxTokens: CONFIG.tokens.research,
         prompt: angle.prompt(topicLine),
         webSearch: true,
         label: `research/${angle.id}`,
       });
-      const lines = notes
+      const noteLines = rawNotes
         .split("\n")
-        .filter((l) => l.trim().startsWith("-")).length;
-      onProgress(`research/${angle.id}: ${lines} sourced notes filed`);
+        .filter((l) => l.trim().startsWith("-"));
+      const sourcedLines = noteLines.filter((l) =>
+        /\(https?:\/\/[^\s)]+\)\s*$/.test(l.trim())
+      );
+      const dropped = noteLines.length - sourcedLines.length;
+      if (sourcedLines.length < 5) {
+        throw new Error(
+          `research/${angle.id}: only ${sourcedLines.length} notes had full source URLs`
+        );
+      }
+      const notes = sourcedLines.join("\n");
+      onProgress(
+        `research/${angle.id}: ${sourcedLines.length} sourced notes filed` +
+          (dropped ? ` (${dropped} unsourced dropped)` : "")
+      );
       return { angleId: angle.id, label: angle.label, notes };
     })
   );

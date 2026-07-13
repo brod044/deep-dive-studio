@@ -9,6 +9,10 @@ export interface CompleteOptions {
   maxTokens: number;
   prompt: string;
   webSearch?: boolean;
+  /** Ask compatible gateway models for a JSON object response. */
+  responseFormat?: "json_object";
+  /** Cap thinking so reasoning models leave room for the visible answer. */
+  reasoningEffort?: "none" | "minimal" | "low" | "medium" | "high";
   /** Telemetry label, e.g. "research/history". Stage prefix keys the cost breakdown. */
   label?: string;
 }
@@ -16,6 +20,8 @@ export interface CompleteOptions {
 export interface Usage {
   promptTokens?: number;
   completionTokens?: number;
+  reasoningTokens?: number;
+  webSources?: number;
   cost?: number;
 }
 

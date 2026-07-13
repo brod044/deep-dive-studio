@@ -4,9 +4,19 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Deep Dive Studio</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%231C1A16'/><circle cx='50' cy='50' r='26' fill='none' stroke='%23E8A33D' stroke-width='8'/><circle cx='50' cy='50' r='7' fill='%23E8A33D'/></svg>" />
+<script>
+  (() => {
+    const saved = localStorage.getItem("dds-theme");
+    document.documentElement.dataset.theme = saved ||
+      (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+    const palettes=[[216,270,166],[196,314,42],[244,182,18],[224,286,154]];
+    const palette=palettes[Math.floor(Math.random()*palettes.length)];
+    palette.forEach((h,i)=>document.documentElement.style.setProperty(`--aura-h${i+1}`,h));
+  })();
+</script>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='24' fill='%23171A1F'/><circle cx='50' cy='50' r='26' fill='none' stroke='%2379A6FF' stroke-width='8'/><circle cx='50' cy='50' r='7' fill='%2379A6FF'/></svg>" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
-<link href="https://fonts.googleapis.com/css2?family=Bitter:wght@700;900&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
 <style>
   :root{
     --bakelite:#1C1A16; --bakelite2:#211E19; --panel:#26231D; --panel2:#2C2820;
@@ -122,6 +132,13 @@
     opacity:0;transform:translateY(4px);transition:all .15s;box-shadow:0 4px 14px rgba(0,0,0,.5)}
   .card:hover .playbtn{opacity:1;transform:none}
   .playbtn svg{width:15px;height:15px;margin-left:2px}
+  .card-actions{display:flex;gap:7px;padding:9px 12px 11px;border-top:1px solid var(--hair)}
+  .card-action{flex:1;border:1px solid var(--hair);border-radius:7px;padding:7px 9px;font-family:var(--mono);
+    font-size:9.5px;letter-spacing:.08em;color:var(--dim);background:var(--panel2)}
+  .card-action:hover{color:var(--text);border-color:var(--faint)}
+  .card-action.resume{color:var(--amber);border-color:var(--amber-dim)}
+  .card-action.danger{color:var(--red)}
+  .card-action:disabled{opacity:.45;cursor:not-allowed}
   .empty{border:1px dashed var(--hair);border-radius:10px;padding:34px;color:var(--faint);
     font-size:13px;text-align:center;grid-column:1/-1}
 
@@ -264,17 +281,139 @@
     .nav-item .lamp{margin-left:0;position:absolute;transform:translate(14px,-10px)}
     #main{padding:20px 16px 130px}
   }
+  /* System UI refresh */
+  :root{
+    color-scheme:light;
+    --bakelite:#f4f6f8;--bakelite2:#ffffff;--panel:#ffffff;--panel2:#edf1f4;
+    --hair:#d9dee5;--text:#171a1f;--dim:#626a75;--faint:#8a929d;
+    --amber:#2563eb;--amber-dim:#9bb9ff;--teal:#07856f;--red:#c9343a;
+    --paper:#ffffff;--ink:#171a1f;--ink-soft:#68717d;--violet:#7657d6;
+    --shadow:0 1px 2px rgba(17,24,39,.05),0 10px 28px rgba(17,24,39,.05);
+    --aura-h1:216;--aura-h2:270;--aura-h3:166;--aura-alpha:.105;--aura-soft:.082;--aura-faint:.045;
+    --serif:var(--sans);
+  }
+  html[data-theme="dark"]{
+    color-scheme:dark;
+    --bakelite:#101317;--bakelite2:#171b20;--panel:#171b20;--panel2:#1e2329;
+    --hair:#303741;--text:#f1f4f7;--dim:#a2aab5;--faint:#707985;
+    --amber:#79a6ff;--amber-dim:#345a9d;--teal:#58c7b4;--red:#ff777d;
+    --paper:#171b20;--ink:#f1f4f7;--ink-soft:#9ca6b2;--violet:#ad98ff;
+    --shadow:0 1px 2px rgba(0,0,0,.28),0 14px 34px rgba(0,0,0,.18);
+    --aura-alpha:.13;--aura-soft:.1;--aura-faint:.065;
+  }
+  html{background:var(--bakelite);scroll-behavior:smooth}
+  body{min-width:320px;line-height:1.45;position:relative;isolation:isolate}
+  body:before,body:after{content:"";position:fixed;pointer-events:none;z-index:0;will-change:transform}
+  body:before{inset:-28vh -22vw;background:
+    radial-gradient(circle at 18% 22%,hsl(var(--aura-h1) 82% 61%/var(--aura-alpha)),transparent 31%),
+    radial-gradient(circle at 79% 18%,hsl(var(--aura-h2) 74% 64%/var(--aura-soft)),transparent 28%),
+    radial-gradient(circle at 64% 82%,hsl(var(--aura-h3) 68% 54%/var(--aura-soft)),transparent 34%);
+    filter:blur(26px);animation:ambient-drift-a 27s ease-in-out infinite alternate}
+  body:after{inset:-18vh -15vw;background:
+    radial-gradient(circle at 35% 72%,hsl(var(--aura-h2) 75% 62%/var(--aura-faint)),transparent 24%),
+    radial-gradient(circle at 84% 56%,hsl(var(--aura-h1) 84% 60%/var(--aura-faint)),transparent 25%);
+    filter:blur(42px);animation:ambient-drift-b 35s ease-in-out infinite alternate-reverse}
+  @keyframes ambient-drift-a{0%{transform:translate3d(-2%,1%,0) scale(1)}45%{transform:translate3d(4%,-3%,0) scale(1.06)}100%{transform:translate3d(-1%,4%,0) scale(1.03)}}
+  @keyframes ambient-drift-b{0%{transform:translate3d(3%,-2%,0) rotate(-2deg)}55%{transform:translate3d(-4%,3%,0) rotate(3deg)}100%{transform:translate3d(2%,5%,0) rotate(-1deg)}}
+  :focus-visible{outline:3px solid color-mix(in srgb,var(--amber) 35%,transparent);outline-offset:2px}
+  .micro{font-size:10px;font-weight:500;letter-spacing:.11em}
+  #app{grid-template-columns:248px minmax(0,1fr);position:relative;z-index:1}
+  #sidebar{background:color-mix(in srgb,var(--bakelite2) 87%,transparent);padding:18px 14px;z-index:20;backdrop-filter:blur(22px) saturate(125%);-webkit-backdrop-filter:blur(22px) saturate(125%)}
+  .brand{display:flex;align-items:center;gap:11px;padding:4px 8px 20px;border:0}
+  .brand-mark{position:relative;width:32px;height:32px;border-radius:9px;background:var(--text);flex:none}
+  .brand-mark:before,.brand-mark:after{content:"";position:absolute;border:2px solid var(--bakelite2);border-radius:50%}
+  .brand-mark:before{width:13px;height:13px;left:7px;top:7px}
+  .brand-mark:after{width:3px;height:3px;left:12px;top:12px;background:var(--bakelite2)}
+  .brand-copy{min-width:0}.brand .micro{color:var(--faint);font-size:8px;letter-spacing:.09em}
+  .brand h1{font-weight:700;font-size:15px;letter-spacing:-.015em;white-space:nowrap;margin-top:1px}
+  nav{margin-top:0;gap:4px}
+  .nav-item{position:relative;min-height:42px;padding:9px 11px;border-radius:10px;font-size:13.5px;font-weight:500;gap:11px;transition:background .16s,color .16s}
+  .nav-item:hover,.nav-item.active{color:var(--text);background:var(--panel2);border-color:transparent}
+  .nav-item.active:before{content:"";position:absolute;left:-14px;width:3px;height:22px;border-radius:0 3px 3px 0;background:var(--amber)}
+  .nav-item .glyph{width:19px;height:19px}.lamp{border-radius:50%;box-shadow:0 0 0 2px var(--panel)}
+  .lamp.run{box-shadow:0 0 0 3px color-mix(in srgb,var(--amber) 18%,transparent)}
+  #side-foot{padding:14px 6px 0;gap:8px}
+  #side-foot .row{padding:0 5px;font-size:9.5px}
+  #theme-toggle{display:flex;align-items:center;gap:9px;width:100%;padding:9px 8px;border-radius:9px;color:var(--dim);font-size:12px;text-align:left}
+  #theme-toggle:hover{background:var(--panel2);color:var(--text)}
+  .theme-icon{display:grid;place-items:center;width:20px;height:20px;border:1px solid var(--hair);border-radius:6px;font-size:13px}
+  #main{padding:46px 48px 140px;max-width:1180px}
+  .view-title{font-size:clamp(28px,3vw,38px);line-height:1.15;font-weight:700;letter-spacing:-.035em;margin:5px 0 8px}
+  .view-sub{font-size:14px;line-height:1.55;max-width:68ch}
+  #composer{margin-top:28px;background:var(--panel);border-radius:16px;padding:20px;box-shadow:var(--shadow)}
+  .compose-row{margin-top:10px}#topic{background:var(--bakelite);border-radius:11px;padding:13px 14px}
+  #focus{background:var(--bakelite);border-radius:10px;padding:10px 14px}
+  #topic:focus,#focus:focus,.field input:focus,.field select:focus{border-color:var(--amber);box-shadow:0 0 0 3px color-mix(in srgb,var(--amber) 14%,transparent);background:var(--panel)}
+  #go{min-height:48px;background:var(--amber);color:var(--panel);border-radius:11px;font-family:var(--sans);font-weight:600;font-size:12px;letter-spacing:.065em;padding:0 22px}
+  #go:disabled{background:var(--panel2);color:var(--faint)}
+  .compose-foot{gap:18px;margin-top:13px}.toggle{font-family:var(--sans);font-size:11.5px;font-weight:500;letter-spacing:0}.toggle input{width:15px;height:15px}
+  .rail-head{margin:38px 0 13px}.rail-head .aux{font-family:var(--sans);font-size:11px;font-weight:500;letter-spacing:0;text-transform:none}
+  #recs{grid-auto-columns:minmax(250px,285px);gap:12px;padding:1px 1px 10px}
+  .rec{border-radius:13px;padding:16px;min-height:126px;transition:transform .16s,border-color .16s,box-shadow .16s}
+  .rec:hover{transform:translateY(-2px);background:var(--panel);box-shadow:var(--shadow)}
+  .rec .hook{font-family:var(--sans);font-weight:600}.rec .cta{letter-spacing:.08em;font-weight:600}
+  #grid{grid-template-columns:repeat(auto-fill,minmax(205px,1fr));gap:16px}
+  .card{border-radius:14px;transition:transform .18s,border-color .18s,box-shadow .18s}
+  .card:hover{transform:translateY(-3px);background:var(--panel);box-shadow:var(--shadow)}
+  .card .body{padding:13px 14px 15px}.card .name{font-family:var(--sans);font-weight:600;line-height:1.35}
+  .card .meta{font-size:9.5px;letter-spacing:.025em;color:var(--faint)}
+  .badge,.chip{border-radius:6px;background:var(--panel2);padding:2px 6px}
+  .playbtn{right:12px;top:12px;width:40px;height:40px;background:var(--panel);color:var(--text);box-shadow:0 4px 16px rgba(0,0,0,.24)}
+  .playbtn:focus-visible{opacity:1;transform:none}.empty{border-radius:13px;padding:42px 28px;background:var(--panel)}
+  .card-actions{padding:10px 12px 12px}.card-action{font-family:var(--sans);font-weight:600;letter-spacing:.035em;background:var(--panel)}
+  .onair-head{margin-top:24px;border-radius:14px;padding:16px 18px;box-shadow:var(--shadow)}
+  .onair-title{font-family:var(--sans);font-weight:600}.onair-stats{font-size:10.5px}
+  .runsheet,.callbox,.notes,.tablebox,.set-card{border-radius:13px}
+  .rs-group{padding:10px 13px 5px}.stage{padding:6px 2px;font-size:10.5px}
+  #wirelog{background:var(--panel);border-radius:13px;padding:12px 14px;font-size:10.5px}.callrow{padding:7px 13px}
+  .paper{border:1px solid var(--hair);border-radius:14px;padding:42px 54px;box-shadow:var(--shadow)}
+  .paper h2{font-weight:700;font-size:26px;letter-spacing:-.02em}.paper .sec{margin-top:32px}.paper .sec .micro{border-color:var(--hair);padding-bottom:7px}.paper p{font-size:15.5px;line-height:1.78}
+  .back{font-family:var(--sans);font-size:12px;font-weight:500;letter-spacing:0}
+  .det-head{gap:26px;margin-top:18px}.det-cover{width:176px;height:176px;border-radius:15px;box-shadow:var(--shadow)}
+  .det-info h2{font-family:var(--sans);font-weight:700;font-size:clamp(26px,4vw,38px);letter-spacing:-.035em}
+  .chips{gap:7px;margin-top:12px}.chip{font-size:9.5px;letter-spacing:.03em}.det-actions{gap:9px;margin-top:18px}
+  .btn{font-family:var(--sans);font-size:11px;font-weight:600;letter-spacing:.045em;border-color:var(--hair);color:var(--text);background:var(--panel);border-radius:9px;padding:9px 14px}
+  .btn:hover{background:var(--panel2)}.btn.solid{background:var(--amber);color:var(--panel);border-color:var(--amber)}
+  .tabs{gap:4px;margin:30px 0 16px;overflow-x:auto;flex-wrap:nowrap}.tab{font-family:var(--sans);font-size:12px;font-weight:500;letter-spacing:0;padding:10px 13px;white-space:nowrap}
+  .pill{font-family:var(--sans);font-size:11.5px;font-weight:500;letter-spacing:0;border-radius:9px;padding:6px 11px;background:var(--panel)}.pill.active{color:var(--panel)}
+  .notes{padding:7px 16px}.note{padding:11px 0;line-height:1.6}.flagcard{background:var(--panel);border-color:color-mix(in srgb,var(--red) 42%,var(--hair));border-left:3px solid var(--red)}
+  th{font-size:9.5px;letter-spacing:.08em;padding:11px 12px;background:var(--panel2)}td{padding:11px 12px}tr:hover td{background:color-mix(in srgb,var(--panel2) 50%,transparent)}
+  .stat-row{margin:24px 0}.stat{border-radius:13px;padding:17px 18px}.stat .v{font-family:var(--sans);font-weight:700;font-size:25px;letter-spacing:-.025em}.bar{height:6px;border-radius:6px;background:var(--panel2)}
+  .set-grid{grid-template-columns:repeat(auto-fit,minmax(310px,1fr));margin-top:24px}.set-card{padding:20px}.set-card .hint{font-size:12.5px;line-height:1.5;margin-bottom:14px}.field{margin-top:13px}.field label{font-family:var(--sans);font-size:11px;font-weight:500;letter-spacing:0;text-transform:none;margin-bottom:6px}.field input,.field select{background:var(--bakelite);border-radius:9px;padding:10px 12px}
+  #player{left:268px;right:20px;bottom:18px;background:color-mix(in srgb,var(--panel) 92%,transparent);backdrop-filter:blur(18px);border:1px solid var(--hair);border-radius:15px;padding:10px 12px;box-shadow:0 16px 44px rgba(0,0,0,.2)}
+  #pl-cover{width:48px;height:48px;border-radius:9px}#pl-title{font-family:var(--sans);font-weight:600}#pl-play{background:var(--text);color:var(--panel)}
+  #composer,.rec,.card,.onair-head,.runsheet,.callbox,.notes,.tablebox,.set-card,.stat,.paper{
+    background:color-mix(in srgb,var(--panel) 82%,transparent);backdrop-filter:blur(18px) saturate(120%);-webkit-backdrop-filter:blur(18px) saturate(120%)}
+  :is(.nav-item,.rec,.card-action,.btn,.tab,.pill,#theme-toggle,#go,.playbtn){position:relative;isolation:isolate;overflow:hidden}
+  :is(.nav-item,.rec,.card-action,.btn,.tab,.pill,#theme-toggle,#go,.playbtn):after{content:"";position:absolute;inset:-80%;pointer-events:none;z-index:1;opacity:0;
+    background:linear-gradient(118deg,transparent 34%,hsl(var(--aura-h1) 85% 64%/.12) 46%,hsl(var(--aura-h2) 78% 65%/.09) 58%,transparent 70%);
+    transform:translateX(-24%) rotate(8deg);transition:opacity .3s ease}
+  :is(.nav-item,.rec,.card-action,.btn,.tab,.pill,#theme-toggle,#go,.playbtn):hover:after,
+  :is(.nav-item,.rec,.card-action,.btn,.tab,.pill,#theme-toggle,#go,.playbtn):focus-visible:after{
+    opacity:1;animation:interaction-sheen 4.6s ease-in-out infinite alternate}
+  :is(button,[role="button"]):disabled:after{display:none}
+  @keyframes interaction-sheen{from{transform:translateX(-27%) rotate(8deg)}to{transform:translateX(28%) rotate(4deg)}}
+  @media(max-width:840px){
+    #app{display:block}#sidebar{position:sticky;height:auto;top:0;padding:9px 12px;display:grid;grid-template-columns:auto 1fr auto;align-items:center;border-right:0;border-bottom:1px solid var(--hair)}
+    .brand{padding:0 8px 0 0}.brand-mark{width:30px;height:30px}.brand-copy{display:none}nav{flex-direction:row;justify-content:flex-end;gap:2px}.nav-item{width:auto;min-height:38px;padding:8px 10px}.nav-item.active:before{left:20%;right:20%;top:auto;bottom:-9px;width:auto;height:2px;border-radius:2px}.nav-item .lamp{position:absolute;right:5px;top:5px;margin:0;transform:none}#side-foot{display:block;margin:0;padding:0;border:0}#side-foot .row,#theme-label{display:none}#theme-toggle{width:38px;height:38px;padding:8px;justify-content:center}.theme-icon{border:0}
+    #main{padding:30px 20px 130px}#player{left:12px;right:12px;bottom:12px}
+  }
+  @media(max-width:620px){
+    .nav-item{padding:8px}.nav-item .txt{display:none}.nav-item .glyph{width:20px;height:20px}.compose-row{align-items:stretch;flex-direction:column}#go{width:100%}.compose-note{width:100%;margin-left:0}.view-title{font-size:30px}.paper{padding:28px 22px}.det-cover{width:112px;height:112px}.onair-stats{width:100%;margin-left:24px}.set-grid{grid-template-columns:1fr}#pl-info,#vu{display:none}
+  }
+  @media (prefers-reduced-motion:reduce){*,*:before,*:after{animation:none!important;scroll-behavior:auto!important;transition:none!important}}
 </style>
 </head>
 <body>
 <div id="app">
   <aside id="sidebar">
     <div class="brand">
-      <div class="micro">Documentary pipeline</div>
-      <h1>Deep Dive Studio</h1>
+      <span class="brand-mark" aria-hidden="true"></span>
+      <div class="brand-copy"><div class="micro">Documentary system</div><h1>Deep Dive Studio</h1></div>
     </div>
     <nav id="nav"></nav>
     <div id="side-foot">
+      <button id="theme-toggle" type="button" aria-label="Switch color theme"><span class="theme-icon" aria-hidden="true">◐</span><span id="theme-label">Appearance</span></button>
       <div class="row"><span class="lamp" id="lamp-provider"></span><span id="provider-label">provider</span></div>
       <div class="row"><span class="lamp" id="lamp-job"></span><span id="job-label">studio quiet</span></div>
     </div>
@@ -301,7 +440,7 @@ const NAV=[["studio","Studio","M3 10.5 12 3l9 7.5M5.5 9v10h13V9"],["onair","On A
 
 // ————————————————— state —————————————————
 const S={
-  view:"studio", epSlug:null, episodes:[], recs:null, state:null,
+  view:"studio", epSlug:null, episodes:[], recs:null, recError:null, state:null, catalog:null,
   job:null, // {slug,topic,startedAt,voice,mock}
   lastJob:null, // sticky for post-run On Air view
   logs:[], calls:[], liveSections:[], stages:{}, detail:null, detailTab:"script", angleSel:null,
@@ -313,6 +452,22 @@ function saveSettings(s){ localStorage.setItem(SET_KEY,JSON.stringify(s)); }
 // ————————————————— utils —————————————————
 const $=(id)=>document.getElementById(id);
 const esc=(s)=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const THEME_KEY="dds-theme";
+function syncThemeButton(){
+  const dark=document.documentElement.dataset.theme==="dark";
+  const button=$("theme-toggle");
+  button.setAttribute("aria-label",dark?"Switch to light mode":"Switch to dark mode");
+  button.setAttribute("aria-pressed",String(dark));
+  button.querySelector(".theme-icon").textContent=dark?"☀":"☾";
+  $("theme-label").textContent=dark?"Light mode":"Dark mode";
+}
+$("theme-toggle").onclick=()=>{
+  const next=document.documentElement.dataset.theme==="dark"?"light":"dark";
+  document.documentElement.dataset.theme=next;
+  localStorage.setItem(THEME_KEY,next);
+  syncThemeButton();
+};
+syncThemeButton();
 function fmtCost(v,provider){
   if(v==null||v===0) return provider==="mock"?"$0.00":"—";
   const s=v<0.01?"<$0.01":"$"+v.toFixed(2);
@@ -322,13 +477,34 @@ function fmtDate(iso){ try{return new Date(iso).toLocaleDateString([],{month:"sh
 function fmtTime(s){ if(!isFinite(s))return"0:00"; s=Math.floor(s); return Math.floor(s/60)+":"+String(s%60).padStart(2,"0"); }
 function fmtTok(n){ return n==null?"—":n>=1000?(n/1000).toFixed(1)+"k":String(n); }
 async function api(path,opts){ const r=await fetch(path,opts); const j=await r.json().catch(()=>({})); if(!r.ok) throw new Error(j.error||r.status); return j; }
+function modelId(value){
+  const raw=String(value||"").trim();
+  const candidate=raw.split(/\s+(?:—|--?)\s+/).at(-1)?.trim()||raw;
+  return candidate&&!/\s/.test(candidate)?candidate:raw;
+}
+function catalogOptions(items,selected,serverDefault){
+  selected=modelId(selected); serverDefault=modelId(serverDefault);
+  const values=[...(items||[])];
+  for(const id of [selected,serverDefault]) if(id&&!values.some(item=>item.id===id)) values.unshift({id,name:id,voices:[]});
+  return `<option value="">Server default — ${esc(serverDefault||"automatic")}</option>`+values.map(item=>
+    `<option value="${esc(item.id)}" title="${esc(item.name)}" ${selected===item.id?"selected":""} ${item.longForm===false?"disabled":""}>${esc(item.id)}</option>`
+  ).join("");
+}
+function voiceOptions(modelId,selected,serverDefault){
+  const model=(S.catalog?.ttsModels||[]).find(item=>item.id===modelId);
+  const voices=[...(model?.voices||[])];
+  for(const voice of [selected,serverDefault]) if(voice&&!voices.includes(voice)) voices.unshift(voice);
+  return `<option value="">Server default — ${esc(serverDefault||"automatic")}</option>`+voices.map(voice=>
+    `<option value="${esc(voice)}" ${selected===voice?"selected":""}>${esc(voice)}</option>`
+  ).join("");
+}
 
 // ————————————————— generative covers —————————————————
 function coverSVG(slug,size){
   let h=2166136261; for(const ch of slug){h^=ch.charCodeAt(0);h=Math.imul(h,16777619);} h>>>=0;
   const rnd=()=>{h^=h<<13;h^=h>>>17;h^=h<<5;h>>>=0;return h/4294967296;};
-  const accents=["#E8A33D","#6FB3A8","#C4553B","#D8CFB8"]; const acc=accents[Math.floor(rnd()*4)];
-  const bg=["#211E19","#1C1A16","#26231D"][Math.floor(rnd()*3)];
+  const accents=["#79A6FF","#58C7B4","#E89A55","#AD98FF"]; const acc=accents[Math.floor(rnd()*4)];
+  const bg=["#171B20","#101317","#222832"][Math.floor(rnd()*3)];
   const kind=Math.floor(rnd()*5); let art="";
   if(kind===0){ // scanlines
     for(let y=8;y<160;y+=8){ const o=(0.06+rnd()*0.5).toFixed(2); art+=`<rect x="0" y="${y}" width="160" height="2.6" fill="${acc}" opacity="${o}"/>`; }
@@ -346,7 +522,7 @@ function coverSVG(slug,size){
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160" width="${size}" height="${size}">
     <rect width="160" height="160" fill="${bg}"/>${art}
     <rect width="160" height="160" fill="none" stroke="rgba(0,0,0,.4)" stroke-width="2"/>
-    <text x="14" y="146" font-family="Bitter,Georgia,serif" font-weight="900" font-size="46" fill="#EDE6D3" opacity=".93">${letter}</text>
+    <text x="14" y="146" font-family="'IBM Plex Sans',system-ui,sans-serif" font-weight="700" font-size="46" fill="#F1F4F7" opacity=".93">${letter}</text>
     <text x="146" y="22" text-anchor="end" font-family="'IBM Plex Mono',monospace" font-size="8" letter-spacing="2" fill="#EDE6D3" opacity=".55">DDS</text>
   </svg>`;
 }
@@ -362,7 +538,7 @@ function route(){
 }
 function renderNav(){
   $("nav").innerHTML=NAV.map(([id,label,d])=>`
-    <button class="nav-item ${S.view===id?"active":""}" onclick="goto('${id}')">
+    <button class="nav-item ${S.view===id?"active":""}" onclick="goto('${id}')" aria-label="${label}" ${S.view===id?'aria-current="page"':""}>
       <svg class="glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="${d}"/></svg>
       <span class="txt">${label}</span>
       ${id==="onair"?`<span class="lamp ${S.job?"run":""}"></span>`:""}
@@ -389,15 +565,15 @@ function viewStudio(){
   const st=settings();
   const eps=S.episodes;
   return `
-  <div class="micro" style="color:var(--amber)">Commission desk</div>
-  <div class="view-title">What do you want a deep dive on?</div>
-  <div class="view-sub">Five researchers fan out across the web, a fact-check desk quarantines weak claims, and a scriptwriter files a ~30-minute documentary. Optionally rendered to audio.</div>
+  <div class="micro" style="color:var(--amber)">New production</div>
+  <div class="view-title">What should we investigate next?</div>
+  <div class="view-sub">Turn any topic into a researched, fact-checked documentary script—then render it as audio when you want to listen.</div>
 
   <div id="composer">
     <div class="micro">Episode topic</div>
     <div class="compose-row">
       <input id="topic" placeholder="TV display technology — CRT to OLED and beyond" autocomplete="off"/>
-      <button id="go">${S.job?"ON AIR…":"COMMISSION"}</button>
+      <button id="go">${S.job?"PRODUCING…":"CREATE EPISODE"}</button>
     </div>
     <input id="focus" placeholder="Angles you care about (optional) — e.g. the modern CRT revival, TCL and Hisense" autocomplete="off"/>
     <div class="compose-foot">
@@ -407,16 +583,17 @@ function viewStudio(){
     </div>
   </div>
 
-  <div class="rail-head"><span class="micro">More rabbit holes</span>
+  <div class="rail-head"><span class="micro">Suggested topics</span>
     <button class="aux" onclick="loadRecs(true)">refresh</button></div>
   <div id="recs">${recsHTML()}</div>
 
-  <div class="rail-head"><span class="micro">Your library</span>
+  <div class="rail-head"><span class="micro">Recent episodes</span>
     <span class="aux">${eps.length} episode${eps.length===1?"":"s"}</span></div>
   <div id="grid">${eps.length?eps.map(cardHTML).join(""):`<div class="empty">Nothing on the shelf yet. Commission your first episode above — or flip on TEST FLIGHT and try the whole pipeline for free.</div>`}</div>`;
 }
 function recsHTML(){
   if(!S.recs) return `<div class="rec"><div class="t">Loading suggestions…</div></div>`;
+  if(!S.recs.length) return `<button class="rec" onclick="loadRecs(true)"><div class="hook">Suggestions unavailable</div><div class="t">${esc(S.recError||"The recommendation model returned no topics.")}</div><div class="cta">TRY AGAIN →</div></button>`;
   return S.recs.map(r=>`
     <button class="rec" onclick="useRec(this)" data-topic="${esc(r.topic)}" data-focus="${esc(r.focus||"")}">
       <div class="hook">${esc(r.hook||r.topic)}</div>
@@ -442,6 +619,10 @@ function cardHTML(e){
     </button>
     ${e.hasAudio?`<button class="playbtn" onclick="playEp('${e.slug}',this)" data-topic="${esc(e.topic)}" title="Play">
       <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button>`:""}
+    <div class="card-actions">
+      ${e.status==="error"?`<button class="card-action resume" onclick="resumeEpisode('${e.slug}')" ${S.job?"disabled":""}>RESUME</button>`:""}
+      <button class="card-action danger" onclick="deleteEpisode('${e.slug}')" ${S.job&&S.job.slug===e.slug?"disabled":""}>DELETE</button>
+    </div>
   </div>`;
 }
 function useRec(el){
@@ -459,11 +640,12 @@ function bindComposer(){
     try{
       await api("/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({
         topic:t,focus:$("focus").value.trim(),voice:st.voice,mock:st.mock,
-        models:{research:st.researchModel,factcheck:st.factcheckModel,writer:st.writerModel},
-        voiceProvider:st.voiceProvider||undefined,ttsModel:st.ttsModel,ttsVoice:st.ttsVoice,
+        models:{research:modelId(st.researchModel),factcheck:modelId(st.factcheckModel),writer:modelId(st.writerModel)},
+        voiceProvider:st.voiceProvider||undefined,ttsModel:modelId(st.ttsModel),ttsVoice:st.ttsVoice,
+        ttsSpeed:st.ttsSpeed?Number(st.ttsSpeed):undefined,
       })});
       goto("onair");
-    }catch(e){ alert("Could not start: "+e.message); go.disabled=false; go.textContent="COMMISSION"; }
+    }catch(e){ alert("Could not start: "+e.message); go.disabled=false; go.textContent="CREATE EPISODE"; }
   };
   go.onclick=submit;
   topic.onkeydown=(e)=>{ if(e.key==="Enter") submit(); };
@@ -497,7 +679,7 @@ function viewOnAir(){
     <div class="onair-head"><span class="lamp"></span>
       <div><div class="micro" style="color:var(--faint)">Standby</div>
       <div class="onair-title" style="color:var(--dim)">The studio is quiet</div></div>
-      <div class="onair-stats"><a href="#studio" style="font-family:var(--mono);font-size:11px">COMMISSION AN EPISODE →</a></div>
+      <div class="onair-stats"><a href="#studio" style="font-size:12px;font-weight:600">CREATE AN EPISODE →</a></div>
     </div>`;
   return `
   <div class="micro" style="color:var(--amber)">Master control</div>
@@ -523,6 +705,8 @@ function viewOnAir(){
       <div class="callbox" id="calls">${S.calls.length?S.calls.map(c=>`
         <div class="callrow"><span class="lb">${esc(c.label)}</span><span>${esc(c.model)}</span>
           <span>${fmtTok(c.promptTokens)}→${fmtTok(c.completionTokens)} tok</span><span>${(c.ms/1000).toFixed(1)}s</span>
+          ${c.webSources!=null?`<span style="color:var(--teal)">${c.webSources} sources</span>`:""}
+          ${c.reasoningTokens?`<span>${fmtTok(c.reasoningTokens)} reasoning</span>`:""}
           <span class="cost">${fmtCost(c.cost,c.provider)}</span></div>`).join("")
         :`<div class="callrow" style="color:var(--faint)">no calls yet</div>`}</div>
       <div class="micro" style="color:var(--faint);margin:16px 0 8px">Script — filing live</div>
@@ -543,7 +727,7 @@ function viewLedger(){
   const words=S.episodes.reduce((n,e)=>n+(e.totalWords||0),0);
   const mins=S.episodes.reduce((n,e)=>n+(e.estMinutes||0),0);
   const stages=["research","factcheck","write","voice","recommend"];
-  const stageColors={research:"var(--teal)",factcheck:"#D8CFB8",write:"var(--amber)",voice:"var(--red)",recommend:"var(--faint)"};
+  const stageColors={research:"var(--teal)",factcheck:"var(--violet)",write:"var(--amber)",voice:"var(--red)",recommend:"var(--faint)"};
   const rows=eps.map(e=>{
     const bs=e.cost.byStage||{}; const t=e.cost.total||0;
     const bar=t?stages.map(s=>bs[s]?`<i style="width:${(bs[s]/t*100).toFixed(1)}%;background:${stageColors[s]}"></i>`:"").join(""):"";
@@ -577,6 +761,9 @@ function viewLedger(){
 function viewSettings(){
   const st=settings(); const sv=S.state||{};
   const models=sv.models||{};
+  const catalog=S.catalog||{models:[],ttsModels:[]};
+  const ttsModel=modelId(st.ttsModel||sv.ttsModel||"");
+  const ttsInfo=(catalog.ttsModels||[]).find(item=>item.id===ttsModel);
   const key=(ok)=>`<span class="lamp ${ok?"done":""}" style="border-radius:50%"></span>`;
   return `
   <div class="micro" style="color:var(--amber)">Engineering</div>
@@ -585,21 +772,19 @@ function viewSettings(){
   <div class="set-grid">
     <div class="set-card">
       <span class="micro">Model routing</span>
-      <div class="hint">Leave blank to use the server default. With OpenRouter use vendor slugs, e.g. <span class="mono">anthropic/claude-opus-4.8</span>.</div>
+      <div class="hint">Choose from the live ${esc(catalog.provider||sv.provider||"provider")} catalog. Leave a field on Server default to follow <span class="mono">.env</span>.</div>
       <div class="field"><label>Research model — default ${esc(models.research||"")}</label>
-        <input id="s-research" list="model-list" value="${esc(st.researchModel||"")}" placeholder="${esc(models.research||"")}"/></div>
+        <select id="s-research">${catalogOptions(catalog.models,st.researchModel||"",models.research||"")}</select></div>
+      <div class="field"><label>Recommendation model — default ${esc(models.recommend||"")}</label>
+        <select id="s-recommend">${catalogOptions(catalog.models,st.recommendModel||"",models.recommend||"")}</select></div>
       <div class="field"><label>Fact-check model — default ${esc(models.factcheck||"")}</label>
-        <input id="s-factcheck" list="model-list" value="${esc(st.factcheckModel||"")}" placeholder="${esc(models.factcheck||"")}"/></div>
+        <select id="s-factcheck">${catalogOptions(catalog.models,st.factcheckModel||"",models.factcheck||"")}</select></div>
       <div class="field"><label>Writer model — default ${esc(models.writer||"")}</label>
-        <input id="s-writer" list="model-list" value="${esc(st.writerModel||"")}" placeholder="${esc(models.writer||"")}"/></div>
-      <datalist id="model-list">
-        <option value="anthropic/claude-haiku-4.5"></option><option value="anthropic/claude-sonnet-4.6"></option>
-        <option value="anthropic/claude-opus-4.8"></option><option value="anthropic/claude-sonnet-5"></option>
-      </datalist>
+        <select id="s-writer">${catalogOptions(catalog.models,st.writerModel||"",models.writer||"")}</select></div>
     </div>
     <div class="set-card">
       <span class="micro">Voice booth</span>
-      <div class="hint">ElevenLabs needs its own key; OpenRouter TTS runs on your OpenRouter key.</div>
+      <div class="hint">ElevenLabs needs its own key; OpenRouter TTS runs on your OpenRouter key. Short-form conversational models are disabled because they truncate documentary narration.</div>
       <div class="field"><label>Voice provider</label>
         <select id="s-voiceprov">
           <option value="" ${!st.voiceProvider?"selected":""}>auto (${esc(sv.voiceProvider||"?")})</option>
@@ -607,9 +792,15 @@ function viewSettings(){
           <option value="elevenlabs" ${st.voiceProvider==="elevenlabs"?"selected":""}>elevenlabs</option>
         </select></div>
       <div class="field"><label>OpenRouter TTS model</label>
-        <input id="s-ttsmodel" value="${esc(st.ttsModel||"")}" placeholder="${esc(sv.ttsModel||"")}"/></div>
+        <select id="s-ttsmodel">${catalogOptions(catalog.ttsModels,st.ttsModel||"",sv.ttsModel||"")}</select></div>
+      ${ttsInfo?.longForm===false?`<div class="hint" style="color:var(--red);margin:8px 0 0">This saved model is capped at short conversational clips. Choose another TTS model before re-rendering.</div>`:""}
       <div class="field"><label>TTS voice</label>
-        <input id="s-ttsvoice" value="${esc(st.ttsVoice||"")}" placeholder="${esc(sv.ttsVoice||"")}"/></div>
+        <select id="s-ttsvoice">${voiceOptions(ttsModel,st.ttsVoice||"",sv.ttsVoice||"")}</select></div>
+      <div class="field"><label>Narration speed</label>
+        <select id="s-ttsspeed">
+          <option value="" ${!st.ttsSpeed?"selected":""}>Server default — ${esc(sv.ttsSpeed||0.9)}×</option>
+          ${[[.75,"0.75× — measured"],[.85,"0.85× — documentary"],[.9,"0.90× — relaxed"],[1,"1.00× — standard"],[1.1,"1.10× — brisk"]].map(([v,l])=>`<option value="${v}" ${String(st.ttsSpeed)===String(v)?"selected":""}>${l}</option>`).join("")}
+        </select></div>
     </div>
     <div class="set-card">
       <span class="micro">API keys</span>
@@ -635,6 +826,14 @@ function viewSettings(){
   </div>`;
 }
 function bindSettings(){
+  $("s-ttsmodel").onchange=()=>{
+    const selectedModel=$("s-ttsmodel").value;
+    const modelId=selectedModel||S.state?.ttsModel||"";
+    const model=(S.catalog?.ttsModels||[]).find(item=>item.id===modelId);
+    const voices=model?.voices||[];
+    $("s-ttsvoice").innerHTML=voiceOptions(modelId,"",S.state?.ttsVoice||"");
+    if(selectedModel&&voices.length) $("s-ttsvoice").value=voices[0];
+  };
   $("k-save").onclick=async()=>{
     const body={};
     const o=$("k-openrouter").value.trim(), a=$("k-anthropic").value.trim(), e=$("k-elevenlabs").value.trim();
@@ -645,13 +844,16 @@ function bindSettings(){
       await api("/api/keys",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
       n.style.color="var(--teal)"; n.textContent="saved to .env";
       await loadState(); // re-renders with fresh provider + key lamps
+      await loadCatalog(true);
     }catch(err){ n.style.color="var(--red)"; n.textContent=err.message; }
   };
   $("s-save").onclick=()=>{
     const st=settings();
-    st.researchModel=$("s-research").value.trim(); st.factcheckModel=$("s-factcheck").value.trim();
-    st.writerModel=$("s-writer").value.trim(); st.voiceProvider=$("s-voiceprov").value||"";
-    st.ttsModel=$("s-ttsmodel").value.trim(); st.ttsVoice=$("s-ttsvoice").value.trim();
+    st.researchModel=modelId($("s-research").value); st.recommendModel=modelId($("s-recommend").value);
+    st.factcheckModel=modelId($("s-factcheck").value);
+    st.writerModel=modelId($("s-writer").value); st.voiceProvider=$("s-voiceprov").value||"";
+    st.ttsModel=modelId($("s-ttsmodel").value); st.ttsVoice=$("s-ttsvoice").value.trim();
+    st.ttsSpeed=$("s-ttsspeed").value;
     st.mock=$("s-mock").checked; saveSettings(st);
     const n=$("save-note"); n.style.opacity=1; setTimeout(()=>n.style.opacity=0,1600);
   };
@@ -688,6 +890,9 @@ function viewDetail(){
       <div class="det-actions">
         ${d.hasAudio?`<button class="btn solid" onclick="playEp('${d.slug}',this)" data-topic="${esc(m.topic||d.slug)}">▶&nbsp; PLAY EPISODE</button>`:""}
         ${d.scriptTxt?`<button class="btn" onclick="copyScript()">COPY SCRIPT</button><button class="btn" onclick="downloadScript()">DOWNLOAD .TXT</button>`:""}
+        ${d.sections.length?`<button class="btn" onclick="rerenderAudio('${d.slug}')" ${S.job?"disabled":""}>${d.hasAudio?"RE-RENDER":"RENDER"} AUDIO</button>`:""}
+        ${m.status==="error"?`<button class="btn" onclick="resumeEpisode('${d.slug}')" ${S.job?"disabled":""}>RESUME</button>`:""}
+        <button class="btn" style="color:var(--red)" onclick="deleteEpisode('${d.slug}')" ${S.job&&S.job.slug===d.slug?"disabled":""}>DELETE</button>
       </div>
     </div>
   </div>
@@ -724,13 +929,14 @@ function detailTabHTML(d){
   if(!calls.length) return `<p style="color:var(--faint)">No call records (episode may predate the studio UI).</p>`;
   const rows=calls.map(c=>`<tr><td class="hi mono" style="font-size:11px">${esc(c.label)}</td><td>${esc(c.model)}</td>
     <td class="num">${fmtTok(c.promptTokens)}</td><td class="num">${fmtTok(c.completionTokens)}</td>
+    <td class="num">${fmtTok(c.reasoningTokens)}</td><td class="num">${c.webSources??"—"}</td>
     <td class="num">${c.chars?c.chars.toLocaleString()+" ch":"—"}</td>
     <td class="num">${(c.ms/1000).toFixed(1)}s</td><td class="num cost">${fmtCost(c.cost,c.provider)}</td></tr>`).join("");
   const total=calls.reduce((n,c)=>n+(c.cost||0),0);
   return `<div class="tablebox"><table>
-    <thead><tr><th>Call</th><th>Model</th><th class="num">In</th><th class="num">Out</th><th class="num">TTS</th><th class="num">Time</th><th class="num">Cost</th></tr></thead>
+    <thead><tr><th>Call</th><th>Model</th><th class="num">In</th><th class="num">Out</th><th class="num">Reason</th><th class="num">Sources</th><th class="num">TTS</th><th class="num">Time</th><th class="num">Cost</th></tr></thead>
     <tbody>${rows}</tbody>
-    <tfoot><tr><td colspan="6" class="hi" style="text-align:right;font-family:var(--mono);font-size:10px;letter-spacing:.14em">EPISODE TOTAL</td><td class="num cost">${fmtCost(total,m.provider)}</td></tr></tfoot>
+    <tfoot><tr><td colspan="8" class="hi" style="text-align:right;font-family:var(--mono);font-size:10px;letter-spacing:.14em">EPISODE TOTAL</td><td class="num cost">${fmtCost(total,m.provider)}</td></tr></tfoot>
   </table></div>`;
 }
 function copyScript(){ if(S.detail&&S.detail.scriptTxt) navigator.clipboard.writeText(S.detail.scriptTxt); }
@@ -739,6 +945,57 @@ function downloadScript(){
   const a=document.createElement("a");
   a.href=URL.createObjectURL(new Blob([S.detail.scriptTxt],{type:"text/plain"}));
   a.download=S.epSlug+"-script.txt"; a.click(); URL.revokeObjectURL(a.href);
+}
+
+function episodeBySlug(slug){
+  if(S.detail&&S.detail.slug===slug) return {...(S.detail.meta||{}),slug,hasAudio:S.detail.hasAudio};
+  return S.episodes.find(e=>e.slug===slug)||null;
+}
+async function resumeEpisode(slug){
+  const episode=episodeBySlug(slug);
+  if(!episode||episode.status!=="error") return;
+  if(S.job){ alert("Another episode is already producing."); return; }
+  const st=settings();
+  try{
+    await api("/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({
+      topic:episode.topic||slug,focus:episode.focus||"",voice:!!episode.voice,mock:episode.provider==="mock",resume:true,
+      models:{
+        research:modelId(st.researchModel||episode.models?.research),
+        factcheck:modelId(st.factcheckModel||episode.models?.factcheck),
+        writer:modelId(st.writerModel||episode.models?.writer),
+      },
+      voiceProvider:st.voiceProvider||undefined,ttsModel:modelId(st.ttsModel),ttsVoice:st.ttsVoice,
+      ttsSpeed:st.ttsSpeed?Number(st.ttsSpeed):undefined,
+    })});
+    goto("onair");
+  }catch(e){ alert("Could not resume: "+e.message); }
+}
+async function rerenderAudio(slug){
+  if(S.job){ alert("Another episode is already producing."); return; }
+  if(!confirm("Render the saved script again with the current voice settings? This replaces the episode audio and makes new paid TTS calls.")) return;
+  const st=settings();
+  try{
+    await api("/api/episodes/"+slug+"/audio",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({
+      voiceProvider:st.voiceProvider||undefined,ttsModel:modelId(st.ttsModel),ttsVoice:st.ttsVoice,
+      ttsSpeed:st.ttsSpeed?Number(st.ttsSpeed):undefined,
+    })});
+    goto("onair");
+  }catch(e){ alert("Could not render audio: "+e.message); }
+}
+async function deleteEpisode(slug){
+  const episode=episodeBySlug(slug);
+  const topic=episode?.topic||slug;
+  if(!confirm(`Delete “${topic}” and all of its saved research, script, and audio?`)) return;
+  try{
+    await api("/api/episodes/"+slug,{method:"DELETE"});
+    if(audio.src.includes("/api/episodes/"+slug+"/audio")){
+      audio.pause(); audio.removeAttribute("src"); $("player").classList.remove("show");
+    }
+    S.episodes=S.episodes.filter(e=>e.slug!==slug);
+    if(S.epSlug===slug){ S.detail=null; S.epSlug=null; goto("studio"); }
+    else render();
+    await loadEpisodes();
+  }catch(e){ alert("Could not delete: "+e.message); }
 }
 
 // ————————————————— player —————————————————
@@ -776,7 +1033,8 @@ setPlayIcon();
 // ————————————————— log-line parsing → run sheet —————————————————
 function parseLog(line){
   let m;
-  if((m=/^research\/([a-z-]+): dispatched/.exec(line))) S.stages["research/"+m[1]]={s:"run"};
+  if(/^research: resumed/.test(line)) ANGLES.forEach(([id])=>S.stages["research/"+id]={s:"done",detail:"saved"});
+  else if((m=/^research\/([a-z-]+): dispatched/.exec(line))) S.stages["research/"+m[1]]={s:"run"};
   else if((m=/^research\/([a-z-]+): (\d+) sourced notes/.exec(line))) S.stages["research/"+m[1]]={s:"done",detail:m[2]+" notes"};
   else if(/^factcheck: cross-referencing/.test(line)) S.stages["factcheck"]={s:"run"};
   else if((m=/^factcheck: (\d+) claim/.exec(line))) S.stages["factcheck"]={s:"done",detail:m[1]+" flagged"};
@@ -853,24 +1111,33 @@ async function loadState(){
   }catch{}
   render();
 }
+async function loadCatalog(force=false){
+  if(S.catalog&&!force) return;
+  try{ S.catalog=await api("/api/catalog"); }
+  catch{ S.catalog={provider:S.state?.provider||"provider",models:[],ttsModels:[]}; }
+  if(S.view==="settings") render();
+}
 async function loadRecs(force){
   if(S.recs&&!force) return;
-  S.recs=null; if(S.view==="studio") render();
+  const avoid=force&&Array.isArray(S.recs)?S.recs.map(rec=>rec.topic).filter(Boolean):[];
+  S.recs=null; S.recError=null; if(S.view==="studio") render();
   try{
     const st=settings();
     const r=await api("/api/recommendations",{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({topics:S.episodes.map(e=>e.topic).slice(0,20),mock:!!st.mock})});
+      body:JSON.stringify({topics:S.episodes.map(e=>e.topic).slice(0,20),avoid,mock:!!st.mock,model:modelId(st.recommendModel)||undefined})});
     S.recs=r.suggestions||[];
-  }catch{ S.recs=[]; }
+    S.recError=r.warning||null;
+  }catch(err){ S.recs=[]; S.recError=err.message; }
   if(S.view==="studio") render();
 }
 
 // ————————————————— boot —————————————————
 window.goto=goto; window.useRec=useRec; window.playEp=playEp; window.setTab=setTab;
+window.resumeEpisode=resumeEpisode; window.rerenderAudio=rerenderAudio; window.deleteEpisode=deleteEpisode;
 window.loadRecs=loadRecs; window.copyScript=copyScript; window.downloadScript=downloadScript;
 connectSSE();
 route();
-loadState();
+loadState().then(()=>loadCatalog());
 loadEpisodes().then(()=>loadRecs(false));
 </script>
 </body>

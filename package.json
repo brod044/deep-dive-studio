@@ -3,12 +3,18 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
   "description": "Topic -> researched, fact-checked, longform documentary podcast script (and audio).",
   "scripts": {
+    "start": "node scripts/start-ui.mjs",
+    "stop": "node scripts/stop-ui.mjs",
     "generate": "tsx src/index.ts",
     "ui": "tsx src/server.ts",
     "typecheck": "tsc --noEmit",
-    "build": "tsc"
+    "build": "tsc",
+    "test": "npm run typecheck"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.111.0",

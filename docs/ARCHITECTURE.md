@@ -33,8 +33,8 @@ topic (+focus)
    Input per call: full research bundle + quarantine list +
    style guide + previous section's last 90 words (continuity)
                            ▼
-   Stage 4 (optional): voice.ts — ElevenLabs per section,
-   concatenated MP3
+   Stage 4 (optional): voice.ts — sentence-aware TTS chunks,
+   duration validation + MP3 frame stitching
 ```
 
 All stages are pure (typed in/out). Only `pipeline.ts` (and the UI server, for
@@ -81,5 +81,6 @@ and let us regenerate one section without redoing the run (roadmap item).
   claim-to-source verification (fetch + compare) is a roadmap item.
 - The writer sees the full research bundle every call → repeated input tokens.
   Prompt caching would cut this substantially.
-- Naive MP3 concatenation works but is inelegant; ffmpeg stitching with
-  silence gaps between parts would be better.
+- TTS providers vary sharply in long-form support. The voice stage blocks known
+  short-form models, rejects responses whose duration cannot contain the input
+  words, and strips per-request MP3 metadata before joining frame streams.

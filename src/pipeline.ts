@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { CONFIG } from "./config.js";
 import { runtime } from "./llm.js";
@@ -8,7 +8,15 @@ import { runResearch } from "./stages/research.js";
 import { runFactcheck } from "./stages/factcheck.js";
 import { runWriter } from "./stages/write.js";
 import { runVoice } from "./stages/voice.js";
-import type { Episode, EpisodeMeta, EpisodeRequest, WrittenSection } from "./types.js";
+import { ANGLES } from "./prompts.js";
+import type {
+  Episode,
+  EpisodeMeta,
+  EpisodeRequest,
+  Flag,
+  ResearchFile,
+  WrittenSection,
+} from "./types.js";
 
 export function log(msg: string): void {
   const t = new Date().toLocaleTimeString([], { hour12: false });
@@ -38,6 +46,8 @@ function summarizeCost(calls: CallEvent[]): { total: number; byStage: Record<str
 export interface ProduceOptions {
   voice: boolean;
   outDir: string;
+  /** Reuse complete research/fact-check artifacts already saved for this slug. */
+  resume?: boolean;
   /** Progress sink; defaults to the console logger. */
   log?: (msg: string) => void;
   /** Fired as each section finishes — lets the UI stream the script live. */
@@ -57,12 +67,15 @@ export async function produceEpisode(
   logger(`Output: ${dir}`);
 
   // Accounting: collect every model/TTS call for this run into meta.json.
-  const calls: CallEvent[] = [];
+  const previousMeta = opts.resume
+    ? readJson<EpisodeMeta>(join(dir, "meta.json"))
+    : null;
+  const calls: CallEvent[] = [...(previousMeta?.calls ?? [])];
   const meta: EpisodeMeta = {
     slug,
     topic: req.topic,
     focus: req.focus ?? null,
-    createdAt: new Date().toISOString(),
+    createdAt: previousMeta?.createdAt ?? new Date().toISOString(),
     status: "running",
     error: null,
     provider: runtime.mock ? "mock" : CONFIG.provider,
@@ -86,17 +99,27 @@ export async function produceEpisode(
 
   try {
     // Stage 1 — research
-    const research = await runResearch(req, logger);
-    for (const file of research) {
-      writeFileSync(
-        join(researchDir, `${file.angleId}.md`),
-        `# ${file.label} — ${req.topic}\n\n${file.notes}\n`
-      );
+    let research = opts.resume ? loadResearch(researchDir) : null;
+    if (research) {
+      logger(`research: resumed ${research.length} saved files`);
+    } else {
+      research = await runResearch(req, logger);
+      for (const file of research) {
+        writeFileSync(
+          join(researchDir, `${file.angleId}.md`),
+          `# ${file.label} — ${req.topic}\n\n${file.notes}\n`
+        );
+      }
     }
 
     // Stage 2 — fact-check
-    const flags = await runFactcheck(req.topic, research, logger);
-    writeFileSync(join(dir, "flags.json"), JSON.stringify(flags, null, 2));
+    let flags = opts.resume ? readJson<Flag[]>(join(dir, "flags.json")) : null;
+    if (flags) {
+      logger(`factcheck: resumed ${flags.length} saved flag(s)`);
+    } else {
+      flags = await runFactcheck(req.topic, research, logger);
+      writeFileSync(join(dir, "flags.json"), JSON.stringify(flags, null, 2));
+    }
     meta.flagsCount = flags.length;
     writeMeta();
 
@@ -146,4 +169,26 @@ export async function produceEpisode(
   } finally {
     unsubscribe();
   }
+}
+
+function readJson<T>(path: string): T | null {
+  try {
+    return JSON.parse(readFileSync(path, "utf8")) as T;
+  } catch {
+    return null;
+  }
+}
+
+function loadResearch(researchDir: string): ResearchFile[] | null {
+  const files: ResearchFile[] = [];
+  for (const angle of ANGLES) {
+    const path = join(researchDir, `${angle.id}.md`);
+    if (!existsSync(path)) return null;
+    const notes = readFileSync(path, "utf8")
+      .replace(/^#.*\r?\n\s*/, "")
+      .trim();
+    if (!notes) return null;
+    files.push({ angleId: angle.id, label: angle.label, notes });
+  }
+  return files;
 }
