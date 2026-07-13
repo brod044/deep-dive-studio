@@ -45,8 +45,9 @@ inspectable and debuggable: `output/<slug>/research/*.md`, `flags.json`,
 ## Providers, telemetry, and the studio UI
 
 - `llm.ts` is the only door to a model: it dispatches to `anthropic.ts`
-  (direct SDK, pause_turn loop) or `openrouter.ts` (plain fetch, web plugin,
-  `usage: {include: true}` for exact cost), or `mock.ts` in test-flight mode.
+  (direct SDK, pause_turn loop), `openrouter.ts` (plain fetch, web plugin,
+  exact cost usage), `nanogpt.ts` (OpenAI-compatible chat, hosted Exa search,
+  and speech), or `mock.ts` in test-flight mode.
 - Every call emits a `telemetry.ts` CallEvent (label, model, tokens, ms,
   cost). The pipeline folds these into `meta.json`; the server streams them
   live to the UI. That one event bus powers both the debug view and the cost

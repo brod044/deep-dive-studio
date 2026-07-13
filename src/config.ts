@@ -1,7 +1,7 @@
 import "dotenv/config";
 
-export type LlmProvider = "anthropic" | "openrouter";
-export type VoiceProvider = "elevenlabs" | "openrouter";
+export type LlmProvider = "anthropic" | "openrouter" | "nanogpt";
+export type VoiceProvider = "elevenlabs" | "openrouter" | "nanogpt";
 
 // Blank lines in .env ("KEY=") reach us as empty strings — treat as unset.
 function env(name: string): string | undefined {
@@ -29,17 +29,55 @@ const MODEL_DEFAULTS: Record<
     factcheck: "anthropic/claude-sonnet-4.6",
     writer: "anthropic/claude-opus-4.8",
   },
+  nanogpt: {
+    research: "minimax/minimax-m2.7",
+    factcheck: "google/gemini-3-flash-preview",
+    writer: "anthropic/claude-opus-4.6",
+  },
 };
 
 function computeProvider(): LlmProvider {
-  // OpenRouter wins when both keys are present; force with LLM_PROVIDER.
-  return (
-    (env("LLM_PROVIDER") as LlmProvider | undefined) ??
-    (env("OPENROUTER_API_KEY") ? "openrouter" : "anthropic")
-  );
+  const forced = env("LLM_PROVIDER");
+  if (forced === "anthropic" || forced === "openrouter" || forced === "nanogpt") return forced;
+  if (env("OPENROUTER_API_KEY")) return "openrouter";
+  if (env("NANOGPT_API_KEY")) return "nanogpt";
+  return "anthropic";
+}
+
+export function modelDefaults(provider: LlmProvider) {
+  return { ...MODEL_DEFAULTS[provider] };
+}
+
+function configuredModels(provider: LlmProvider) {
+  const defaults = MODEL_DEFAULTS[provider];
+  return {
+    research: env("RESEARCH_MODEL") ?? defaults.research,
+    factcheck: env("FACTCHECK_MODEL") ?? defaults.factcheck,
+    writer: env("WRITER_MODEL") ?? defaults.writer,
+  };
+}
+
+function computeVoiceProvider(llmProvider: LlmProvider): VoiceProvider {
+  const forced = env("VOICE_PROVIDER");
+  if (forced === "elevenlabs" || forced === "openrouter" || forced === "nanogpt") return forced;
+  if (env("ELEVENLABS_API_KEY")) return "elevenlabs";
+  if (llmProvider === "nanogpt" && env("NANOGPT_API_KEY")) return "nanogpt";
+  if (env("OPENROUTER_API_KEY")) return "openrouter";
+  if (env("NANOGPT_API_KEY")) return "nanogpt";
+  return "openrouter";
+}
+
+export function voiceDefaults(provider: VoiceProvider): { model: string; voice: string } {
+  if (provider === "nanogpt") return { model: "gpt-4o-mini-tts", voice: "alloy" };
+  if (provider === "elevenlabs") {
+    return { model: "eleven_multilingual_v2", voice: "onwK4e9ZLuTAKqWW03F9" };
+  }
+  return { model: "microsoft/mai-voice-2", voice: "en-US-Harper:MAI-Voice-2" };
 }
 
 const provider = computeProvider();
+const initialVoiceProvider = computeVoiceProvider(provider);
+const initialVoiceDefaults = voiceDefaults(initialVoiceProvider);
 
 export const CONFIG = {
   provider,
@@ -47,14 +85,11 @@ export const CONFIG = {
     apiKey: env("OPENROUTER_API_KEY") ?? "",
     baseUrl: "https://openrouter.ai/api/v1",
   },
-  models: {
-    // Cheap + fast agentic researcher. Runs 5x in parallel with web search.
-    research: env("RESEARCH_MODEL") ?? MODEL_DEFAULTS[provider].research,
-    // Mid-tier verifier: cross-references the research files.
-    factcheck: env("FACTCHECK_MODEL") ?? MODEL_DEFAULTS[provider].factcheck,
-    // Best available writer for the narration itself.
-    writer: env("WRITER_MODEL") ?? MODEL_DEFAULTS[provider].writer,
+  nanogpt: {
+    apiKey: env("NANOGPT_API_KEY") ?? "",
+    baseUrl: "https://nano-gpt.com/api/v1",
   },
+  models: configuredModels(provider),
   // Lightweight commissioning call used to suggest the next four topics.
   recommendModel: env("RECOMMEND_MODEL") ?? MODEL_DEFAULTS[provider].research,
   tokens: {
@@ -65,11 +100,9 @@ export const CONFIG = {
   searchesPerAngle: 10,
   wordsPerMinute: 150,
   voice: {
-    // ElevenLabs if its key is set, else OpenRouter TTS; force with VOICE_PROVIDER.
-    provider: (env("VOICE_PROVIDER") ??
-      (env("ELEVENLABS_API_KEY") ? "elevenlabs" : "openrouter")) as VoiceProvider,
-    openrouterModel: env("TTS_MODEL") ?? "microsoft/mai-voice-2",
-    openrouterVoice: env("TTS_VOICE") ?? "en-US-Harper:MAI-Voice-2",
+    provider: initialVoiceProvider,
+    model: env("TTS_MODEL") ?? initialVoiceDefaults.model,
+    voice: env("TTS_VOICE") ?? initialVoiceDefaults.voice,
     speed: Math.min(2, Math.max(0.5, numberEnv("TTS_SPEED", 0.9))),
     chunkChars: Math.min(3900, Math.max(800, numberEnv("TTS_CHUNK_CHARS", 3000))),
   },
@@ -88,15 +121,21 @@ export function reconfigure(): void {
   const p = computeProvider();
   CONFIG.provider = p;
   CONFIG.openrouter.apiKey = env("OPENROUTER_API_KEY") ?? "";
-  CONFIG.models.research = env("RESEARCH_MODEL") ?? MODEL_DEFAULTS[p].research;
-  CONFIG.models.factcheck = env("FACTCHECK_MODEL") ?? MODEL_DEFAULTS[p].factcheck;
-  CONFIG.models.writer = env("WRITER_MODEL") ?? MODEL_DEFAULTS[p].writer;
+  CONFIG.nanogpt.apiKey = env("NANOGPT_API_KEY") ?? "";
+  Object.assign(CONFIG.models, configuredModels(p));
   CONFIG.recommendModel = env("RECOMMEND_MODEL") ?? MODEL_DEFAULTS[p].research;
-  CONFIG.voice.provider = (env("VOICE_PROVIDER") ??
-    (env("ELEVENLABS_API_KEY") ? "elevenlabs" : "openrouter")) as VoiceProvider;
-  CONFIG.voice.openrouterModel = env("TTS_MODEL") ?? "microsoft/mai-voice-2";
-  CONFIG.voice.openrouterVoice = env("TTS_VOICE") ?? "en-US-Harper:MAI-Voice-2";
+  CONFIG.voice.provider = computeVoiceProvider(p);
+  const voice = voiceDefaults(CONFIG.voice.provider);
+  CONFIG.voice.model = env("TTS_MODEL") ?? voice.model;
+  CONFIG.voice.voice = env("TTS_VOICE") ?? voice.voice;
   CONFIG.voice.speed = Math.min(2, Math.max(0.5, numberEnv("TTS_SPEED", 0.9)));
   CONFIG.voice.chunkChars = Math.min(3900, Math.max(800, numberEnv("TTS_CHUNK_CHARS", 3000)));
   CONFIG.elevenlabs.apiKey = env("ELEVENLABS_API_KEY") ?? "";
+}
+
+/** Select a provider for the next server-owned job without rewriting .env. */
+export function configureProvider(provider: LlmProvider): void {
+  CONFIG.provider = provider;
+  Object.assign(CONFIG.models, configuredModels(provider));
+  CONFIG.recommendModel = env("RECOMMEND_MODEL") ?? MODEL_DEFAULTS[provider].research;
 }

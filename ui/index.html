@@ -594,7 +594,8 @@ function viewStudio(){
 function recsHTML(){
   if(!S.recs) return `<div class="rec"><div class="t">Loading suggestions…</div></div>`;
   if(!S.recs.length) return `<button class="rec" onclick="loadRecs(true)"><div class="hook">Suggestions unavailable</div><div class="t">${esc(S.recError||"The recommendation model returned no topics.")}</div><div class="cta">TRY AGAIN →</div></button>`;
-  return S.recs.map(r=>`
+  const warning=S.recError?`<div class="hint" style="color:var(--amber);margin:0 0 10px">${esc(S.recError)}</div>`:"";
+  return warning+S.recs.map(r=>`
     <button class="rec" onclick="useRec(this)" data-topic="${esc(r.topic)}" data-focus="${esc(r.focus||"")}">
       <div class="hook">${esc(r.hook||r.topic)}</div>
       <div class="t">${esc(r.topic)}</div>
@@ -640,6 +641,7 @@ function bindComposer(){
     try{
       await api("/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({
         topic:t,focus:$("focus").value.trim(),voice:st.voice,mock:st.mock,
+        llmProvider:st.llmProvider||undefined,
         models:{research:modelId(st.researchModel),factcheck:modelId(st.factcheckModel),writer:modelId(st.writerModel)},
         voiceProvider:st.voiceProvider||undefined,ttsModel:modelId(st.ttsModel),ttsVoice:st.ttsVoice,
         ttsSpeed:st.ttsSpeed?Number(st.ttsSpeed):undefined,
@@ -760,9 +762,13 @@ function viewLedger(){
 // ————————————————— settings view —————————————————
 function viewSettings(){
   const st=settings(); const sv=S.state||{};
-  const models=sv.models||{};
   const catalog=S.catalog||{models:[],ttsModels:[]};
-  const ttsModel=modelId(st.ttsModel||sv.ttsModel||"");
+  const models=catalog.defaults||sv.models||{};
+  const recommendDefault=catalog.recommendDefault||models.recommend||"";
+  const voiceDefault=catalog.voiceDefault||{model:sv.ttsModel||"",voice:sv.ttsVoice||""};
+  const llmProvider=st.llmProvider||sv.provider||"openrouter";
+  const voiceProvider=st.voiceProvider||sv.voiceProvider||"openrouter";
+  const ttsModel=modelId(st.ttsModel||voiceDefault.model||"");
   const ttsInfo=(catalog.ttsModels||[]).find(item=>item.id===ttsModel);
   const key=(ok)=>`<span class="lamp ${ok?"done":""}" style="border-radius:50%"></span>`;
   return `
@@ -772,11 +778,17 @@ function viewSettings(){
   <div class="set-grid">
     <div class="set-card">
       <span class="micro">Model routing</span>
+      <div class="field"><label>LLM provider</label>
+        <select id="s-llmprov">
+          <option value="openrouter" ${llmProvider==="openrouter"?"selected":""}>openrouter</option>
+          <option value="nanogpt" ${llmProvider==="nanogpt"?"selected":""}>nanogpt</option>
+          <option value="anthropic" ${llmProvider==="anthropic"?"selected":""}>anthropic direct</option>
+        </select></div>
       <div class="hint">Choose from the live ${esc(catalog.provider||sv.provider||"provider")} catalog. Leave a field on Server default to follow <span class="mono">.env</span>.</div>
       <div class="field"><label>Research model — default ${esc(models.research||"")}</label>
         <select id="s-research">${catalogOptions(catalog.models,st.researchModel||"",models.research||"")}</select></div>
-      <div class="field"><label>Recommendation model — default ${esc(models.recommend||"")}</label>
-        <select id="s-recommend">${catalogOptions(catalog.models,st.recommendModel||"",models.recommend||"")}</select></div>
+      <div class="field"><label>Recommendation model — default ${esc(recommendDefault)} · no model fallback</label>
+        <select id="s-recommend">${catalogOptions(catalog.models,st.recommendModel||"",recommendDefault)}</select></div>
       <div class="field"><label>Fact-check model — default ${esc(models.factcheck||"")}</label>
         <select id="s-factcheck">${catalogOptions(catalog.models,st.factcheckModel||"",models.factcheck||"")}</select></div>
       <div class="field"><label>Writer model — default ${esc(models.writer||"")}</label>
@@ -784,18 +796,19 @@ function viewSettings(){
     </div>
     <div class="set-card">
       <span class="micro">Voice booth</span>
-      <div class="hint">ElevenLabs needs its own key; OpenRouter TTS runs on your OpenRouter key. Short-form conversational models are disabled because they truncate documentary narration.</div>
+      <div class="hint">OpenRouter and NanoGPT TTS run on their matching API keys; ElevenLabs uses its own. Models and voices come from the selected provider's live catalog.</div>
       <div class="field"><label>Voice provider</label>
         <select id="s-voiceprov">
           <option value="" ${!st.voiceProvider?"selected":""}>auto (${esc(sv.voiceProvider||"?")})</option>
           <option value="openrouter" ${st.voiceProvider==="openrouter"?"selected":""}>openrouter</option>
+          <option value="nanogpt" ${st.voiceProvider==="nanogpt"?"selected":""}>nanogpt</option>
           <option value="elevenlabs" ${st.voiceProvider==="elevenlabs"?"selected":""}>elevenlabs</option>
         </select></div>
-      <div class="field"><label>OpenRouter TTS model</label>
-        <select id="s-ttsmodel">${catalogOptions(catalog.ttsModels,st.ttsModel||"",sv.ttsModel||"")}</select></div>
+      <div class="field"><label>${esc(voiceProvider)} TTS model</label>
+        <select id="s-ttsmodel">${catalogOptions(catalog.ttsModels,st.ttsModel||"",voiceDefault.model||"")}</select></div>
       ${ttsInfo?.longForm===false?`<div class="hint" style="color:var(--red);margin:8px 0 0">This saved model is capped at short conversational clips. Choose another TTS model before re-rendering.</div>`:""}
       <div class="field"><label>TTS voice</label>
-        <select id="s-ttsvoice">${voiceOptions(ttsModel,st.ttsVoice||"",sv.ttsVoice||"")}</select></div>
+        <select id="s-ttsvoice">${voiceOptions(ttsModel,st.ttsVoice||"",voiceDefault.voice||"")}</select></div>
       <div class="field"><label>Narration speed</label>
         <select id="s-ttsspeed">
           <option value="" ${!st.ttsSpeed?"selected":""}>Server default — ${esc(sv.ttsSpeed||0.9)}×</option>
@@ -807,6 +820,8 @@ function viewSettings(){
       <div class="hint">Stored in <span class="mono">.env</span> on this machine and applied immediately — never sent anywhere else. Leave a field blank to keep the current key; enter a value to replace it.</div>
       <div class="field"><label>OpenRouter key ${sv.hasOpenrouterKey?'<span style="color:var(--teal)">— present</span>':'<span style="color:var(--red)">— missing</span>'}</label>
         <input id="k-openrouter" type="password" autocomplete="off" placeholder="${sv.hasOpenrouterKey?"present — leave blank to keep":"sk-or-…"}"/></div>
+      <div class="field"><label>NanoGPT key ${sv.hasNanogptKey?'<span style="color:var(--teal)">— present</span>':'<span style="color:var(--red)">— missing</span>'}</label>
+        <input id="k-nanogpt" type="password" autocomplete="off" placeholder="${sv.hasNanogptKey?"present — leave blank to keep":"NanoGPT API key"}"/></div>
       <div class="field"><label>Anthropic key ${sv.hasAnthropicKey?'<span style="color:var(--teal)">— present</span>':'<span style="color:var(--dim)">— missing</span>'}</label>
         <input id="k-anthropic" type="password" autocomplete="off" placeholder="${sv.hasAnthropicKey?"present — leave blank to keep":"sk-ant-…"}"/></div>
       <div class="field"><label>ElevenLabs key ${sv.hasElevenlabsKey?'<span style="color:var(--teal)">— present</span>':'<span style="color:var(--dim)">— missing</span>'}</label>
@@ -816,8 +831,9 @@ function viewSettings(){
     <div class="set-card">
       <span class="micro">Studio status</span>
       <div class="hint">Read from the server environment at boot.</div>
-      <div class="keyrow">${key(sv.provider==="openrouter"?sv.hasOpenrouterKey:sv.hasAnthropicKey)} LLM provider: <b style="color:var(--text)">${esc(sv.provider||"?")}</b></div>
+      <div class="keyrow">${key(sv.provider==="openrouter"?sv.hasOpenrouterKey:sv.provider==="nanogpt"?sv.hasNanogptKey:sv.hasAnthropicKey)} Active server provider: <b style="color:var(--text)">${esc(sv.provider||"?")}</b></div>
       <div class="keyrow">${key(sv.hasOpenrouterKey)} OPENROUTER_API_KEY ${sv.hasOpenrouterKey?"present":"missing"}</div>
+      <div class="keyrow">${key(sv.hasNanogptKey)} NANOGPT_API_KEY ${sv.hasNanogptKey?"present":"missing"}</div>
       <div class="keyrow">${key(sv.hasAnthropicKey)} ANTHROPIC_API_KEY ${sv.hasAnthropicKey?"present":"missing"}</div>
       <div class="keyrow">${key(sv.hasElevenlabsKey)} ELEVENLABS_API_KEY ${sv.hasElevenlabsKey?"present":"missing"}</div>
       <div class="field" style="margin-top:14px"><label class="toggle" style="font-size:11px"><input type="checkbox" id="s-mock" ${st.mock?"checked":""}/> TEST FLIGHT MODE — canned pipeline, zero spend</label></div>
@@ -826,18 +842,32 @@ function viewSettings(){
   </div>`;
 }
 function bindSettings(){
+  $("s-llmprov").onchange=async()=>{
+    const st=settings();
+    st.llmProvider=$("s-llmprov").value;
+    st.researchModel=""; st.recommendModel=""; st.factcheckModel=""; st.writerModel="";
+    saveSettings(st); S.catalog=null;
+    await loadCatalog(true);
+  };
+  $("s-voiceprov").onchange=async()=>{
+    const st=settings();
+    st.voiceProvider=$("s-voiceprov").value;
+    st.ttsModel=""; st.ttsVoice="";
+    saveSettings(st); S.catalog=null;
+    await loadCatalog(true);
+  };
   $("s-ttsmodel").onchange=()=>{
     const selectedModel=$("s-ttsmodel").value;
-    const modelId=selectedModel||S.state?.ttsModel||"";
+    const modelId=selectedModel||S.catalog?.voiceDefault?.model||S.state?.ttsModel||"";
     const model=(S.catalog?.ttsModels||[]).find(item=>item.id===modelId);
     const voices=model?.voices||[];
-    $("s-ttsvoice").innerHTML=voiceOptions(modelId,"",S.state?.ttsVoice||"");
+    $("s-ttsvoice").innerHTML=voiceOptions(modelId,"",S.catalog?.voiceDefault?.voice||S.state?.ttsVoice||"");
     if(selectedModel&&voices.length) $("s-ttsvoice").value=voices[0];
   };
   $("k-save").onclick=async()=>{
     const body={};
-    const o=$("k-openrouter").value.trim(), a=$("k-anthropic").value.trim(), e=$("k-elevenlabs").value.trim();
-    if(o) body.openrouter=o; if(a) body.anthropic=a; if(e) body.elevenlabs=e;
+    const o=$("k-openrouter").value.trim(), nkey=$("k-nanogpt").value.trim(), a=$("k-anthropic").value.trim(), e=$("k-elevenlabs").value.trim();
+    if(o) body.openrouter=o; if(nkey) body.nanogpt=nkey; if(a) body.anthropic=a; if(e) body.elevenlabs=e;
     const n=$("key-note");
     if(!Object.keys(body).length){ n.style.color="var(--red)"; n.textContent="nothing entered"; return; }
     try{
@@ -849,6 +879,7 @@ function bindSettings(){
   };
   $("s-save").onclick=()=>{
     const st=settings();
+    st.llmProvider=$("s-llmprov").value;
     st.researchModel=modelId($("s-research").value); st.recommendModel=modelId($("s-recommend").value);
     st.factcheckModel=modelId($("s-factcheck").value);
     st.writerModel=modelId($("s-writer").value); st.voiceProvider=$("s-voiceprov").value||"";
@@ -959,6 +990,7 @@ async function resumeEpisode(slug){
   try{
     await api("/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({
       topic:episode.topic||slug,focus:episode.focus||"",voice:!!episode.voice,mock:episode.provider==="mock",resume:true,
+      llmProvider:st.llmProvider||(["openrouter","nanogpt","anthropic"].includes(episode.provider)?episode.provider:undefined),
       models:{
         research:modelId(st.researchModel||episode.models?.research),
         factcheck:modelId(st.factcheckModel||episode.models?.factcheck),
@@ -1105,7 +1137,7 @@ async function loadState(){
   try{
     S.state=await api("/api/state");
     $("provider-label").textContent=S.state.provider;
-    const ok=S.state.provider==="openrouter"?S.state.hasOpenrouterKey:S.state.hasAnthropicKey;
+    const ok=S.state.provider==="openrouter"?S.state.hasOpenrouterKey:S.state.provider==="nanogpt"?S.state.hasNanogptKey:S.state.hasAnthropicKey;
     $("lamp-provider").className="lamp "+(ok?"done":"err");
     if(S.state.activeJob&&!S.job){ S.job=S.state.activeJob; }
   }catch{}
@@ -1113,7 +1145,10 @@ async function loadState(){
 }
 async function loadCatalog(force=false){
   if(S.catalog&&!force) return;
-  try{ S.catalog=await api("/api/catalog"); }
+  const st=settings();
+  const provider=st.llmProvider||S.state?.provider||"openrouter";
+  const voiceProvider=st.voiceProvider||S.state?.voiceProvider||"openrouter";
+  try{ S.catalog=await api("/api/catalog?provider="+encodeURIComponent(provider)+"&voiceProvider="+encodeURIComponent(voiceProvider)); }
   catch{ S.catalog={provider:S.state?.provider||"provider",models:[],ttsModels:[]}; }
   if(S.view==="settings") render();
 }
@@ -1124,7 +1159,7 @@ async function loadRecs(force){
   try{
     const st=settings();
     const r=await api("/api/recommendations",{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({topics:S.episodes.map(e=>e.topic).slice(0,20),avoid,mock:!!st.mock,model:modelId(st.recommendModel)||undefined})});
+      body:JSON.stringify({topics:S.episodes.map(e=>e.topic).slice(0,20),avoid,mock:!!st.mock,provider:st.llmProvider||S.state?.provider,model:modelId(st.recommendModel)||undefined})});
     S.recs=r.suggestions||[];
     S.recError=r.warning||null;
   }catch(err){ S.recs=[]; S.recError=err.message; }

@@ -1,5 +1,6 @@
 import { CONFIG } from "../config.js";
 import { speech as openrouterSpeech } from "../openrouter.js";
+import { speech as nanogptSpeech } from "../nanogpt.js";
 import { emitCall } from "../telemetry.js";
 import type { WrittenSection } from "../types.js";
 
@@ -21,11 +22,8 @@ export async function runVoice(
   onProgress: (msg: string) => void
 ): Promise<Buffer> {
   const provider = CONFIG.voice.provider;
-  const model =
-    provider === "openrouter"
-      ? CONFIG.voice.openrouterModel
-      : CONFIG.elevenlabs.modelId;
-  if (provider === "openrouter" && !supportsLongFormTts(model)) {
+  const model = provider === "elevenlabs" ? CONFIG.elevenlabs.modelId : CONFIG.voice.model;
+  if (provider !== "elevenlabs" && !supportsLongFormTts(model)) {
     throw new Error(
       `${model} is a short-form conversational voice capped at about 10 seconds per request. ` +
       "Choose a long-form TTS model before rendering this documentary."
@@ -33,7 +31,10 @@ export async function runVoice(
   }
   const chunks: Buffer[] = [];
   for (const section of sections) {
-    const sectionChunks = chunkSpeechText(section.text, CONFIG.voice.chunkChars);
+    const maxChars = provider === "nanogpt"
+      ? Math.min(CONFIG.voice.chunkChars, 1800)
+      : CONFIG.voice.chunkChars;
+    const sectionChunks = chunkSpeechText(section.text, maxChars);
     onProgress(
       `voice/${section.id}: rendering ${section.words} words in ${sectionChunks.length} chunk${sectionChunks.length === 1 ? "" : "s"} (${provider})`
     );
@@ -42,7 +43,9 @@ export async function runVoice(
       const t0 = Date.now();
       const audio = provider === "openrouter"
         ? await openrouterSpeech(text)
-        : await elevenlabsSpeech(text);
+        : provider === "nanogpt"
+          ? await nanogptSpeech(text)
+          : await elevenlabsSpeech(text);
       emitCall({
         at: t0,
         label: `voice/${section.id}/${i + 1}`,
@@ -51,7 +54,7 @@ export async function runVoice(
         ms: Date.now() - t0,
         chars: text.length,
       });
-      if (provider === "openrouter") {
+      if (provider !== "elevenlabs") {
         const duration = estimateMp3Duration(audio);
         const words = text.split(/\s+/).filter(Boolean).length;
         const minimumCompleteDuration = (words / 320) * 60;

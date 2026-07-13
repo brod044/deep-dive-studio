@@ -3,7 +3,15 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { createReadStream, existsSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { CONFIG, reconfigure } from "./config.js";
+import {
+  CONFIG,
+  configureProvider,
+  modelDefaults,
+  reconfigure,
+  voiceDefaults,
+  type LlmProvider,
+  type VoiceProvider,
+} from "./config.js";
 import { resetClient } from "./anthropic.js";
 import { complete, runtime } from "./llm.js";
 import { recommendationPrompt, SECTIONS } from "./prompts.js";
@@ -34,6 +42,7 @@ let DEFAULT_RECOMMEND_MODEL = CONFIG.recommendModel;
 
 const KEY_NAMES = {
   openrouter: "OPENROUTER_API_KEY",
+  nanogpt: "NANOGPT_API_KEY",
   anthropic: "ANTHROPIC_API_KEY",
   elevenlabs: "ELEVENLABS_API_KEY",
 } as const;
@@ -73,7 +82,7 @@ function applyKeys(body: Record<string, unknown>): void {
   resetClient();
   DEFAULT_MODELS = { ...CONFIG.models };
   DEFAULT_RECOMMEND_MODEL = CONFIG.recommendModel;
-  catalogCache = null;
+  catalogCache.clear();
   log(`API keys updated (${Object.keys(updates).join(", ")}) — provider now ${CONFIG.provider}`);
 }
 
@@ -105,8 +114,9 @@ interface GenerateBody {
   voice?: boolean;
   mock?: boolean;
   resume?: boolean;
+  llmProvider?: LlmProvider;
   models?: { research?: string; factcheck?: string; writer?: string };
-  voiceProvider?: "elevenlabs" | "openrouter";
+  voiceProvider?: VoiceProvider;
   ttsModel?: string;
   ttsVoice?: string;
   ttsSpeed?: number;
@@ -119,11 +129,38 @@ function normalizeModelId(value: string | undefined): string | undefined {
   return candidate && !/\s/.test(candidate) ? candidate : raw;
 }
 
+function normalizeLlmProvider(value: unknown): LlmProvider | undefined {
+  return value === "anthropic" || value === "openrouter" || value === "nanogpt" ? value : undefined;
+}
+
+function normalizeVoiceProvider(value: unknown): VoiceProvider | undefined {
+  return value === "elevenlabs" || value === "openrouter" || value === "nanogpt" ? value : undefined;
+}
+
+function providerHasKey(provider: LlmProvider): boolean {
+  if (provider === "openrouter") return !!CONFIG.openrouter.apiKey;
+  if (provider === "nanogpt") return !!CONFIG.nanogpt.apiKey;
+  return !!process.env.ANTHROPIC_API_KEY;
+}
+
+function providerKeyName(provider: LlmProvider): string {
+  if (provider === "openrouter") return "OPENROUTER_API_KEY";
+  if (provider === "nanogpt") return "NANOGPT_API_KEY";
+  return "ANTHROPIC_API_KEY";
+}
+
 function applyVoiceSettings(body: GenerateBody): void {
-  if (body.voiceProvider) CONFIG.voice.provider = body.voiceProvider;
+  const requestedProvider = normalizeVoiceProvider(body.voiceProvider);
+  if (body.voiceProvider && !requestedProvider) throw new HttpError(400, "Unknown voice provider");
+  if (requestedProvider && requestedProvider !== CONFIG.voice.provider) {
+    CONFIG.voice.provider = requestedProvider;
+    const defaults = voiceDefaults(requestedProvider);
+    CONFIG.voice.model = defaults.model;
+    CONFIG.voice.voice = defaults.voice;
+  }
   const ttsModel = normalizeModelId(body.ttsModel);
-  if (ttsModel) CONFIG.voice.openrouterModel = ttsModel;
-  if (body.ttsVoice?.trim()) CONFIG.voice.openrouterVoice = body.ttsVoice.trim();
+  if (ttsModel) CONFIG.voice.model = ttsModel;
+  if (body.ttsVoice?.trim()) CONFIG.voice.voice = body.ttsVoice.trim();
   if (body.ttsSpeed != null) {
     if (!Number.isFinite(body.ttsSpeed) || body.ttsSpeed < 0.5 || body.ttsSpeed > 2) {
       throw new HttpError(400, "ttsSpeed must be between 0.5 and 2");
@@ -138,6 +175,16 @@ function startJob(body: GenerateBody): { slug: string } {
   if (activeJob) throw new HttpError(409, `Already producing "${activeJob.topic}"`);
 
   runtime.mock = !!body.mock;
+  const requestedProvider = normalizeLlmProvider(body.llmProvider);
+  if (body.llmProvider && !requestedProvider) throw new HttpError(400, "Unknown LLM provider");
+  if (requestedProvider) {
+    configureProvider(requestedProvider);
+    DEFAULT_MODELS = { ...CONFIG.models };
+    DEFAULT_RECOMMEND_MODEL = CONFIG.recommendModel;
+  }
+  if (!runtime.mock && !providerHasKey(CONFIG.provider)) {
+    throw new HttpError(400, `${providerKeyName(CONFIG.provider)} is not set`);
+  }
   CONFIG.models.research = normalizeModelId(body.models?.research) || DEFAULT_MODELS.research;
   CONFIG.models.factcheck = normalizeModelId(body.models?.factcheck) || DEFAULT_MODELS.factcheck;
   CONFIG.models.writer = normalizeModelId(body.models?.writer) || DEFAULT_MODELS.writer;
@@ -188,6 +235,19 @@ function readJson<T>(path: string): T | null {
     return JSON.parse(readFileSync(path, "utf8")) as T;
   } catch {
     return null;
+  }
+}
+
+function recoverInterruptedEpisodes(): void {
+  if (!existsSync(OUT_DIR)) return;
+  for (const slug of readdirSync(OUT_DIR)) {
+    const metaPath = join(OUT_DIR, slug, "meta.json");
+    const meta = readJson<EpisodeMeta>(metaPath);
+    if (meta?.status !== "running") continue;
+    meta.status = "error";
+    meta.error = "Studio stopped before the episode completed. Resume to continue from saved checkpoints.";
+    writeFileSync(metaPath, JSON.stringify(meta, null, 2));
+    log(`Recovered interrupted episode for resume: ${slug}`);
   }
 }
 
@@ -335,15 +395,19 @@ const STARTER_SUGGESTIONS = [
 async function recommend(
   pastTopics: string[],
   modelOverride?: string,
-  avoidTopics: string[] = []
+  avoidTopics: string[] = [],
+  provider: LlmProvider = CONFIG.provider
 ): Promise<{ suggestions: unknown[]; source: string }> {
   if (!pastTopics.length) return { suggestions: STARTER_SUGGESTIONS, source: "starter" };
-  const hasKey = CONFIG.provider === "openrouter" ? !!CONFIG.openrouter.apiKey : !!process.env.ANTHROPIC_API_KEY;
-  if (!hasKey && !runtime.mock) return { suggestions: STARTER_SUGGESTIONS, source: "starter" };
+  if (!providerHasKey(provider) && !runtime.mock) return { suggestions: STARTER_SUGGESTIONS, source: "starter" };
+  const providerDefault = provider === CONFIG.provider
+    ? DEFAULT_RECOMMEND_MODEL
+    : modelDefaults(provider).research;
   const raw = await complete({
-    model: normalizeModelId(modelOverride) || DEFAULT_RECOMMEND_MODEL,
+    model: normalizeModelId(modelOverride) || providerDefault,
     maxTokens: 700,
     label: "recommend",
+    provider,
     prompt: recommendationPrompt(pastTopics, avoidTopics),
   });
   const clean = raw.replace(/```json|```/g, "").trim();
@@ -359,68 +423,111 @@ interface CatalogModel {
   voices: string[];
   longForm: boolean;
   contextLength?: number;
+  maxChars?: number;
 }
 
-interface OpenRouterModelRecord {
+interface CatalogModelRecord {
   id?: string;
   name?: string;
   supported_voices?: string[] | null;
   context_length?: number | null;
+  capabilities?: { text_to_speech?: boolean };
+  supported_parameters?: { voices?: unknown; max_chars?: unknown };
 }
 
-let catalogCache: { expiresAt: number; value: unknown } | null = null;
+const catalogCache = new Map<string, { expiresAt: number; value: unknown }>();
 
-function mapCatalogModels(records: OpenRouterModelRecord[]): CatalogModel[] {
+function mapCatalogModels(records: CatalogModelRecord[]): CatalogModel[] {
   return records
-    .filter((model): model is OpenRouterModelRecord & { id: string } => typeof model.id === "string")
-    .map((model) => ({
-      id: model.id,
-      name: model.name?.trim() || model.id,
-      voices: Array.isArray(model.supported_voices)
-        ? model.supported_voices.filter((voice): voice is string => typeof voice === "string")
-        : [],
-      longForm: supportsLongFormTts(model.id),
-      ...(typeof model.context_length === "number" ? { contextLength: model.context_length } : {}),
-    }))
+    .filter((model): model is CatalogModelRecord & { id: string } => typeof model.id === "string")
+    .map((model) => {
+      const voices = model.supported_voices ?? model.supported_parameters?.voices;
+      const maxChars = model.supported_parameters?.max_chars;
+      return {
+        id: model.id,
+        name: model.name?.trim() || model.id,
+        voices: Array.isArray(voices)
+          ? voices.filter((voice): voice is string => typeof voice === "string")
+          : [],
+        longForm: supportsLongFormTts(model.id),
+        ...(typeof model.context_length === "number" ? { contextLength: model.context_length } : {}),
+        ...(typeof maxChars === "number" ? { maxChars } : {}),
+      };
+    })
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
-async function getModelCatalog(): Promise<unknown> {
-  if (catalogCache && catalogCache.expiresAt > Date.now()) return catalogCache.value;
+function fallbackModels(provider: LlmProvider): CatalogModel[] {
+  return [...new Set(Object.values(modelDefaults(provider)))].map((id) => ({
+    id, name: id, voices: [], longForm: true,
+  }));
+}
+
+async function fetchOpenRouterModels(modality: "text" | "speech"): Promise<CatalogModel[]> {
   const headers: Record<string, string> = { Accept: "application/json" };
   if (CONFIG.openrouter.apiKey) headers.Authorization = `Bearer ${CONFIG.openrouter.apiKey}`;
+  const res = await fetch(`${CONFIG.openrouter.baseUrl}/models?output_modalities=${modality}`, { headers });
+  if (!res.ok) throw new Error(`OpenRouter model catalog ${res.status}`);
+  const json = (await res.json()) as { data?: CatalogModelRecord[] };
+  return mapCatalogModels(Array.isArray(json.data) ? json.data : []);
+}
 
-  const fetchModels = async (modality: "text" | "speech"): Promise<CatalogModel[]> => {
-    const res = await fetch(`${CONFIG.openrouter.baseUrl}/models?output_modalities=${modality}`, { headers });
-    if (!res.ok) throw new Error(`OpenRouter model catalog ${res.status}`);
-    const json = (await res.json()) as { data?: OpenRouterModelRecord[] };
-    return mapCatalogModels(Array.isArray(json.data) ? json.data : []);
-  };
+async function fetchNanoGptModels(audio = false): Promise<CatalogModel[]> {
+  const headers: Record<string, string> = { Accept: "application/json" };
+  if (CONFIG.nanogpt.apiKey) headers.Authorization = `Bearer ${CONFIG.nanogpt.apiKey}`;
+  const path = audio ? "/audio-models?type=tts&detailed=true" : "/models?detailed=true";
+  const res = await fetch(`${CONFIG.nanogpt.baseUrl}${path}`, { headers });
+  if (!res.ok) throw new Error(`NanoGPT model catalog ${res.status}`);
+  const json = (await res.json()) as { data?: CatalogModelRecord[] };
+  const records = Array.isArray(json.data) ? json.data : [];
+  // NanoGPT's live endpoint can include music records even with type=tts;
+  // capability filtering keeps only models valid for /audio/speech narration.
+  return mapCatalogModels(audio ? records.filter((model) => model.capabilities?.text_to_speech === true) : records);
+}
+
+async function getModelCatalog(
+  provider: LlmProvider = CONFIG.provider,
+  voiceProvider: VoiceProvider = CONFIG.voice.provider
+): Promise<unknown> {
+  const cacheKey = `${provider}:${voiceProvider}`;
+  const cached = catalogCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) return cached.value;
 
   let models: CatalogModel[];
   let ttsModels: CatalogModel[];
   try {
-    [models, ttsModels] = await Promise.all([
-      CONFIG.provider === "openrouter"
-        ? fetchModels("text")
-        : Promise.resolve(
-            [...new Set(Object.values(DEFAULT_MODELS))].map((id) => ({ id, name: id, voices: [], longForm: true }))
-          ),
-      fetchModels("speech"),
-    ]);
+    const textRequest = provider === "openrouter"
+      ? fetchOpenRouterModels("text")
+      : provider === "nanogpt"
+        ? fetchNanoGptModels(false)
+        : Promise.resolve(fallbackModels(provider));
+    const ttsRequest = voiceProvider === "openrouter"
+      ? fetchOpenRouterModels("speech")
+      : voiceProvider === "nanogpt"
+        ? fetchNanoGptModels(true)
+        : Promise.resolve([{
+            id: CONFIG.elevenlabs.modelId,
+            name: "ElevenLabs Multilingual v2",
+            voices: [CONFIG.elevenlabs.voiceId],
+            longForm: true,
+          }]);
+    [models, ttsModels] = await Promise.all([textRequest, ttsRequest]);
   } catch (err) {
     log(`Model catalog fallback: ${err instanceof Error ? err.message : String(err)}`);
-    models = [...new Set(Object.values(DEFAULT_MODELS))].map((id) => ({ id, name: id, voices: [], longForm: true }));
-    ttsModels = [{
-      id: CONFIG.voice.openrouterModel,
-      name: CONFIG.voice.openrouterModel,
-      voices: [CONFIG.voice.openrouterVoice],
-      longForm: supportsLongFormTts(CONFIG.voice.openrouterModel),
-    }];
+    models = fallbackModels(provider);
+    const voice = voiceDefaults(voiceProvider);
+    ttsModels = [{ id: voice.model, name: voice.model, voices: [voice.voice], longForm: true }];
   }
 
-  const value = { provider: CONFIG.provider, models, ttsModels };
-  catalogCache = { expiresAt: Date.now() + 10 * 60 * 1000, value };
+  const defaults = provider === CONFIG.provider ? { ...DEFAULT_MODELS } : modelDefaults(provider);
+  const recommendDefault = provider === CONFIG.provider
+    ? DEFAULT_RECOMMEND_MODEL
+    : modelDefaults(provider).research;
+  const voiceDefault = voiceProvider === CONFIG.voice.provider
+    ? { model: CONFIG.voice.model, voice: CONFIG.voice.voice }
+    : voiceDefaults(voiceProvider);
+  const value = { provider, voiceProvider, models, ttsModels, defaults, recommendDefault, voiceDefault };
+  catalogCache.set(cacheKey, { expiresAt: Date.now() + 10 * 60 * 1000, value });
   return value;
 }
 
@@ -512,10 +619,11 @@ const server = createServer(async (req, res) => {
         provider: CONFIG.provider,
         models: { ...DEFAULT_MODELS, recommend: DEFAULT_RECOMMEND_MODEL },
         voiceProvider: CONFIG.voice.provider,
-        ttsModel: CONFIG.voice.openrouterModel,
-        ttsVoice: CONFIG.voice.openrouterVoice,
+        ttsModel: CONFIG.voice.model,
+        ttsVoice: CONFIG.voice.voice,
         ttsSpeed: CONFIG.voice.speed,
         hasOpenrouterKey: !!CONFIG.openrouter.apiKey,
+        hasNanogptKey: !!CONFIG.nanogpt.apiKey,
         hasAnthropicKey: !!process.env.ANTHROPIC_API_KEY,
         hasElevenlabsKey: !!CONFIG.elevenlabs.apiKey,
         activeJob,
@@ -529,7 +637,13 @@ const server = createServer(async (req, res) => {
     }
 
     if (req.method === "GET" && path === "/api/catalog") {
-      sendJson(res, 200, await getModelCatalog());
+      const providerParam = url.searchParams.get("provider");
+      const voiceParam = url.searchParams.get("voiceProvider");
+      const provider = providerParam ? normalizeLlmProvider(providerParam) : CONFIG.provider;
+      const voiceProvider = voiceParam ? normalizeVoiceProvider(voiceParam) : CONFIG.voice.provider;
+      if (!provider) throw new HttpError(400, "Unknown LLM provider");
+      if (!voiceProvider) throw new HttpError(400, "Unknown voice provider");
+      sendJson(res, 200, await getModelCatalog(provider, voiceProvider));
       return;
     }
 
@@ -570,10 +684,11 @@ const server = createServer(async (req, res) => {
         provider: CONFIG.provider,
         models: { ...DEFAULT_MODELS, recommend: DEFAULT_RECOMMEND_MODEL },
         voiceProvider: CONFIG.voice.provider,
-        ttsModel: CONFIG.voice.openrouterModel,
-        ttsVoice: CONFIG.voice.openrouterVoice,
+        ttsModel: CONFIG.voice.model,
+        ttsVoice: CONFIG.voice.voice,
         ttsSpeed: CONFIG.voice.speed,
         hasOpenrouterKey: !!CONFIG.openrouter.apiKey,
+        hasNanogptKey: !!CONFIG.nanogpt.apiKey,
         hasAnthropicKey: !!process.env.ANTHROPIC_API_KEY,
         hasElevenlabsKey: !!CONFIG.elevenlabs.apiKey,
       });
@@ -592,27 +707,23 @@ const server = createServer(async (req, res) => {
         avoid?: string[];
         mock?: boolean;
         model?: string;
+        provider?: LlmProvider;
       };
       runtime.mock = !!body.mock;
+      const provider = normalizeLlmProvider(body.provider) ?? CONFIG.provider;
       try {
-        sendJson(res, 200, await recommend(body.topics ?? [], body.model, body.avoid ?? []));
+        sendJson(res, 200, await recommend(body.topics ?? [], body.model, body.avoid ?? [], provider));
       } catch (err) {
         const warning = err instanceof Error ? err.message : String(err);
-        const selectedModel = normalizeModelId(body.model);
-        if (selectedModel && selectedModel !== DEFAULT_RECOMMEND_MODEL) {
-          try {
-            const retry = await recommend(body.topics ?? [], undefined, body.avoid ?? []);
-            log(`Recommendation model ${selectedModel} failed; used ${DEFAULT_RECOMMEND_MODEL}: ${warning}`);
-            sendJson(res, 200, { ...retry, source: "model-default", warning });
-            return;
-          } catch (retryErr) {
-            const retryWarning = retryErr instanceof Error ? retryErr.message : String(retryErr);
-            log(`Recommendations fallback: ${warning}; default retry: ${retryWarning}`);
-          }
-        } else {
-          log(`Recommendations fallback: ${warning}`);
-        }
-        sendJson(res, 200, { suggestions: STARTER_SUGGESTIONS, source: "fallback", warning });
+        const selectedModel = normalizeModelId(body.model) ||
+          (provider === CONFIG.provider ? DEFAULT_RECOMMEND_MODEL : modelDefaults(provider).research);
+        log(`Recommendation model ${selectedModel} failed; using local starters only: ${warning}`);
+        sendJson(res, 200, {
+          suggestions: STARTER_SUGGESTIONS,
+          source: "local-fallback",
+          model: selectedModel,
+          warning: `${warning} No backup model was called.`,
+        });
       }
       return;
     }
@@ -627,6 +738,7 @@ const server = createServer(async (req, res) => {
 });
 
 // Localhost only — this server handles API keys and must not be LAN-exposed.
+recoverInterruptedEpisodes();
 server.listen(PORT, "127.0.0.1", () => {
   log(`Deep Dive Studio UI — http://localhost:${PORT}`);
   log(`Provider: ${CONFIG.provider} · voice: ${CONFIG.voice.provider} · output: ${OUT_DIR}/`);

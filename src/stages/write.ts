@@ -9,10 +9,19 @@ export async function runWriter(
   research: ResearchFile[],
   flags: Flag[],
   onProgress: (msg: string) => void,
-  onSection?: (section: WrittenSection) => void
+  onSection?: (section: WrittenSection) => void,
+  existing: WrittenSection[] = []
 ): Promise<WrittenSection[]> {
   const written: WrittenSection[] = [];
+  const saved = new Map(existing.map((section) => [section.id, section]));
   for (const section of SECTIONS) {
+    const checkpoint = saved.get(section.id);
+    if (checkpoint) {
+      written.push(checkpoint);
+      onProgress(`write/${section.id}: resumed ${checkpoint.words} saved words`);
+      onSection?.(checkpoint);
+      continue;
+    }
     onProgress(`write/${section.id}: drafting`);
     const previousTail = written.length
       ? written[written.length - 1].text.split(/\s+/).slice(-90).join(" ")

@@ -6,7 +6,16 @@ import type { Angle, Flag, ResearchFile, Section } from "./types.js";
 // for sentiment and poison for facts. Every prompt demands the specificity the
 // writer will need — the script can only be as concrete as these notes.
 
-const noteRules = `NOTE RULES (strict):
+const requestScopeRules = `LISTENER REQUEST SCOPE (follow the wording, not a fixed template):
+- Treat the topic as a literal request. A short question such as "what's new with batteries?" asks for a current-state episode: emphasize developments from the last 24 months, use older history only where it explains the present, and make near-term implications the spine.
+- A request such as "the full history of paper" asks for a comprehensive chronology from origins through the present. Do not turn it into a recent-news roundup.
+- For a broad noun with no time cue, use the balanced history -> mechanisms -> institutions/industry -> reception -> present -> future arc.
+- Adapt the vocabulary to the subject. For a material, cultural practice, scientific idea, person, place, or institution, "technical" means its concrete mechanisms, production, methods, or operating system; "industry" means the relevant makers, institutions, labor, economics, or power structure.
+- Never force an irrelevant business, collector, or technology angle. Research the closest evidence-backed dimension that helps answer the listener's actual request instead.
+
+`;
+
+const noteRules = `${requestScopeRules}NOTE RULES (strict):
 - One fact per line, start each line with "- ". Every line MUST end with the source URL in parentheses.
 - Prefer exact figures over generalities: years AND months where known, dollar amounts (with the era's dollars noted), unit counts, percentages, market shares, prices at launch and prices later.
 - Name people (full names and roles), companies, labs, cities, and specific product model numbers/names.
@@ -54,11 +63,28 @@ ${noteRules}`,
   },
 ];
 
+export function researchRetryPrompt(angle: Angle, topic: string): string {
+  return `${angle.prompt(topic)}
+
+FORMAT RECOVERY (the previous answer could not be filed):
+- Return ONLY a Markdown bullet list. Do not use tables, headings, numbered lists, footnotes, or a separate sources section.
+- Every bullet must use exactly this shape: - one factual claim (https://full-source-url)
+- Put the full URL at the END of the same bullet it supports. A citation marker such as [1] or a bare domain name is not enough.
+- Return at least 10 sourced bullets.`;
+}
+
 // ————————————————— narration style —————————————————
 //
 // The register: Asianometry's narrative documentary voice fused with
 // SemiAnalysis's analytical discipline. Derived from close reading of both;
 // the rules below are what actually makes that voice, spelled out.
+
+const sectionScopeRules = `REQUEST FIT (overrides the generic section template where necessary):
+- Infer the requested scope from the listener's exact wording and keep that scope consistent across every section.
+- For "what's new", "latest", "current", or similarly present-focused requests, compress origins into only the context needed to understand the current inflection point. Give the most space and narrative weight to the present evidence, current disagreements, and near-term consequences.
+- For "history", "origins", "evolution", or similarly chronological requests, carry the timeline through the entire episode and use the present and future as the ending of that history.
+- For subjects outside manufactured technology, reinterpret "how it works" as concrete mechanisms, methods, production, practice, or institutional operation, and reinterpret "industry" as the relevant organizations, labor, economics, incentives, or power.
+- If a template element is genuinely irrelevant and unsupported by the research, omit it rather than inventing a strained analogy or claim.`;
 
 export const STYLE_GUIDE = `VOICE & STYLE (follow strictly — this register is the product):
 
@@ -182,6 +208,8 @@ export function sectionPrompt(args: {
     : "";
   return `You are the scriptwriter for a longform audio documentary episode about: ${topic}.
 ${focus ? `The listener specifically asked to cover: ${focus}\n` : ""}
+${sectionScopeRules}
+
 ${STYLE_GUIDE}
 
 SECTION TO WRITE NOW — ${section.label}:

@@ -13,7 +13,7 @@ npm run typecheck          # tsc --noEmit — run after every change
 npm run ui                 # studio web UI on http://localhost:8787
 npm run generate -- --topic "TV display technology"            # research + script
 npm run generate -- --topic "..." --focus "CRT revival, TCL"   # steer the angles
-npm run generate -- --topic "..." --voice                      # also render MP3 (ElevenLabs or OpenRouter TTS)
+npm run generate -- --topic "..." --voice                      # also render MP3 (ElevenLabs/OpenRouter/NanoGPT)
 npm run generate -- --topic "..." --research-model "anthropic/Codex-haiku-4.5" \
   --writer-model "anthropic/Codex-opus-4.8"                   # per-run model overrides (--factcheck-model too)
 ```
@@ -29,15 +29,16 @@ Outputs land in `output/<topic-slug>/`:
 
 Three-stage pipeline, orchestrated by `src/pipeline.ts`. LLM calls go through
 `src/llm.ts`, which dispatches to a provider client — `src/anthropic.ts`
-(direct, Anthropic SDK) or `src/openrouter.ts` (OpenRouter, plain fetch) —
-based on which API key is set (`LLM_PROVIDER` forces it). Stages never call a
-provider client directly.
+(direct, Anthropic SDK), `src/openrouter.ts` (OpenRouter, plain fetch), or
+`src/nanogpt.ts` (NanoGPT, plain fetch) — based on the selected provider/key
+(`LLM_PROVIDER` forces CLI routing). Stages never call a provider client directly.
 
 1. **Research** (`src/stages/research.ts`) — 5 parallel calls to a cheap model
    (default Haiku 4.5) with live web search: the Anthropic server-side
    `web_search_20250305` tool on the direct path, the OpenRouter web plugin
    (`plugins: [{id: "web"}]`, native engine for Anthropic models) on
-   OpenRouter. Angles: history, technical, industry, sentiment, future.
+   OpenRouter, and NanoGPT's hosted `webSearch` enrichment (Exa neural).
+   Angles: history, technical, industry, sentiment, future.
    Defined in `src/prompts.ts` (ANGLES).
 2. **Fact-check** (`src/stages/factcheck.ts`) — one mid-tier call
    (default Sonnet 4.6) cross-references all research files and returns JSON
@@ -49,8 +50,8 @@ provider client directly.
    the full research bundle, the quarantine list, and the tail of the previous
    section for continuity.
 4. **Voice** (`src/stages/voice.ts`, optional) — TTS chunked per section,
-   concatenated to one MP3. ElevenLabs when its key is set, else OpenRouter's
-   `/audio/speech` endpoint (`TTS_MODEL`/`TTS_VOICE`); `VOICE_PROVIDER` forces.
+   concatenated to one MP3. ElevenLabs direct or the OpenRouter/NanoGPT
+   `/audio/speech` endpoints (`TTS_MODEL`/`TTS_VOICE`); `VOICE_PROVIDER` forces.
 
 Models and token budgets are configured in `src/config.ts` — per-stage,
 per-provider defaults, overridable via env vars (see `.env.example`) or the

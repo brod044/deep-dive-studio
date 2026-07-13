@@ -14,7 +14,7 @@
     "ui": "tsx src/server.ts",
     "typecheck": "tsc --noEmit",
     "build": "tsc",
-    "test": "npm run typecheck"
+    "test": "npm run typecheck && npm run build && node scripts/test-nanogpt.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.111.0",

@@ -8,7 +8,7 @@ import { runResearch } from "./stages/research.js";
 import { runFactcheck } from "./stages/factcheck.js";
 import { runWriter } from "./stages/write.js";
 import { runVoice } from "./stages/voice.js";
-import { ANGLES } from "./prompts.js";
+import { ANGLES, SECTIONS } from "./prompts.js";
 import type {
   Episode,
   EpisodeMeta,
@@ -99,17 +99,25 @@ export async function produceEpisode(
 
   try {
     // Stage 1 — research
-    let research = opts.resume ? loadResearch(researchDir) : null;
-    if (research) {
+    const savedResearch = opts.resume ? loadResearch(researchDir) : [];
+    let research: ResearchFile[];
+    if (savedResearch.length === ANGLES.length) {
+      research = savedResearch;
       logger(`research: resumed ${research.length} saved files`);
     } else {
-      research = await runResearch(req, logger);
-      for (const file of research) {
+      if (savedResearch.length) {
+        logger(`research: resuming ${savedResearch.length} saved file(s)`);
+      }
+      const saveResearch = (file: ResearchFile): void => {
         writeFileSync(
           join(researchDir, `${file.angleId}.md`),
           `# ${file.label} — ${req.topic}\n\n${file.notes}\n`
         );
-      }
+      };
+      research = await runResearch(req, logger, {
+        existing: savedResearch,
+        onFile: saveResearch,
+      });
     }
 
     // Stage 2 — fact-check
@@ -124,12 +132,16 @@ export async function produceEpisode(
     writeMeta();
 
     // Stage 3 — write
+    const savedSections = opts.resume ? loadPartialSections(dir) : [];
+    if (savedSections.length) {
+      logger(`write: resuming ${savedSections.length} saved section(s)`);
+    }
     const sections = await runWriter(req, research, flags, logger, (section) => {
       // Persist incrementally so a crash doesn't lose finished sections.
       const partial = join(dir, `_partial-${section.id}.txt`);
       writeFileSync(partial, section.text);
       opts.onSection?.(section);
-    });
+    }, savedSections);
 
     const totalWords = sections.reduce((n, s) => n + s.words, 0);
     const estMinutes = Math.round(totalWords / CONFIG.wordsPerMinute);
@@ -179,16 +191,33 @@ function readJson<T>(path: string): T | null {
   }
 }
 
-function loadResearch(researchDir: string): ResearchFile[] | null {
+function loadResearch(researchDir: string): ResearchFile[] {
   const files: ResearchFile[] = [];
   for (const angle of ANGLES) {
     const path = join(researchDir, `${angle.id}.md`);
-    if (!existsSync(path)) return null;
+    if (!existsSync(path)) continue;
     const notes = readFileSync(path, "utf8")
       .replace(/^#.*\r?\n\s*/, "")
       .trim();
-    if (!notes) return null;
+    if (!notes) continue;
     files.push({ angleId: angle.id, label: angle.label, notes });
   }
   return files;
+}
+
+function loadPartialSections(dir: string): WrittenSection[] {
+  const sections: WrittenSection[] = [];
+  for (const section of SECTIONS) {
+    const path = join(dir, `_partial-${section.id}.txt`);
+    if (!existsSync(path)) continue;
+    const text = readFileSync(path, "utf8").trim();
+    if (!text) continue;
+    sections.push({
+      id: section.id,
+      label: section.label,
+      text,
+      words: text.split(/\s+/).length,
+    });
+  }
+  return sections;
 }

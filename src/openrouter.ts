@@ -45,6 +45,11 @@ export async function complete(opts: CompleteOptions): Promise<ProviderResult> {
   }
 
   let lastErr: unknown;
+  let promptTokens = 0;
+  let completionTokens = 0;
+  let reasoningTokens = 0;
+  let cost = 0;
+  const allCitationUrls = new Set<string>();
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const res = await fetch(`${CONFIG.openrouter.baseUrl}/chat/completions`, {
@@ -62,7 +67,13 @@ export async function complete(opts: CompleteOptions): Promise<ProviderResult> {
             content?: string | null;
             annotations?: {
               type?: string;
-              url_citation?: { url?: string; title?: string };
+            url_citation?: {
+              url?: string;
+              title?: string;
+              content?: string;
+              start_index?: number;
+              end_index?: number;
+            };
             }[];
           };
           finish_reason?: string | null;
@@ -83,15 +94,10 @@ export async function complete(opts: CompleteOptions): Promise<ProviderResult> {
       if (choice?.error?.message) {
         throw new Error(`OpenRouter ${choice.error.code ?? "error"}: ${choice.error.message}`);
       }
-      let text = choice?.message?.content?.trim() ?? "";
-      if (!text) {
-        const finish = choice?.finish_reason ?? "unknown";
-        const reasoning = json.usage?.completion_tokens_details?.reasoning_tokens;
-        throw new Error(
-          `OpenRouter returned no content (finish_reason=${finish}` +
-            `${typeof reasoning === "number" ? `, reasoning_tokens=${reasoning}` : ""})`
-        );
-      }
+      promptTokens += json.usage?.prompt_tokens ?? 0;
+      completionTokens += json.usage?.completion_tokens ?? 0;
+      reasoningTokens += json.usage?.completion_tokens_details?.reasoning_tokens ?? 0;
+      cost += json.usage?.cost ?? 0;
 
       const citationUrls = [
         ...new Set(
@@ -101,18 +107,48 @@ export async function complete(opts: CompleteOptions): Promise<ProviderResult> {
             .filter((url): url is string => !!url)
         ),
       ];
+      for (const url of citationUrls) allCitationUrls.add(url);
+
+      let text = choice?.message?.content?.trim() ?? "";
+      if (!text) {
+        const finish = choice?.finish_reason ?? "unknown";
+        const reasoning = json.usage?.completion_tokens_details?.reasoning_tokens;
+        if (opts.webSearch && finish === "tool_calls" && attempt === 0) {
+          // Some gateway models expose the server search request as an
+          // unfinished client tool call. Fall back to injected web context,
+          // which requires no client-side tool execution.
+          delete body.tools;
+          body.plugins = [
+            {
+              id: "web",
+              engine: "auto",
+              max_results: CONFIG.searchesPerAngle,
+            },
+          ];
+          lastErr = new Error("OpenRouter web search requested client continuation");
+          await new Promise((r) => setTimeout(r, 1000));
+          continue;
+        }
+        throw new Error(
+          `OpenRouter returned no content (finish_reason=${finish}` +
+            `${typeof reasoning === "number" ? `, reasoning_tokens=${reasoning}` : ""})`
+        );
+      }
+
       if (opts.webSearch && citationUrls.length === 0) {
         throw new Error("OpenRouter web search returned no citation annotations");
       }
-      if (opts.webSearch) text = canonicalizeMarkdownCitations(text);
+      if (opts.webSearch) {
+        text = canonicalizeMarkdownCitations(text, choice?.message?.annotations ?? []);
+      }
       return {
         text,
         usage: {
-          promptTokens: json.usage?.prompt_tokens,
-          completionTokens: json.usage?.completion_tokens,
-          reasoningTokens: json.usage?.completion_tokens_details?.reasoning_tokens,
-          webSources: opts.webSearch ? citationUrls.length : undefined,
-          cost: json.usage?.cost,
+          promptTokens: promptTokens || undefined,
+          completionTokens: completionTokens || undefined,
+          reasoningTokens: reasoningTokens || undefined,
+          webSources: opts.webSearch ? allCitationUrls.size : undefined,
+          cost: cost || undefined,
         },
       };
     } catch (err) {
@@ -123,13 +159,62 @@ export async function complete(opts: CompleteOptions): Promise<ProviderResult> {
   throw lastErr;
 }
 
-/** Convert a trailing Markdown source link to the note format prompts require. */
-function canonicalizeMarkdownCitations(text: string): string {
+type UrlCitationAnnotation = {
+  type?: string;
+  url_citation?: {
+    url?: string;
+    title?: string;
+    content?: string;
+    start_index?: number;
+    end_index?: number;
+  };
+};
+
+/**
+ * Normalize list markers and attach OpenRouter's indexed URL annotations to
+ * the exact lines they support. Some models cite correctly in annotations but
+ * omit the literal URLs from their visible text.
+ */
+export function canonicalizeMarkdownCitations(
+  text: string,
+  annotations: UrlCitationAnnotation[]
+): string {
+  const citations = annotations
+    .filter((annotation) => annotation.type === "url_citation")
+    .map((annotation) => annotation.url_citation)
+    .filter((citation): citation is NonNullable<typeof citation> => !!citation?.url);
+
+  let offset = 0;
   return text
     .split("\n")
-    .map((line) =>
-      line.replace(/\[[^\]]+\]\((https?:\/\/[^)]+)\)\s*$/, "($1)")
-    )
+    .map((originalLine) => {
+      const lineStart = offset;
+      const lineEnd = lineStart + originalLine.length;
+      offset = lineEnd + 1;
+
+      let line = originalLine
+        .replace(/^\s*(?:[*•▪◦]|\d+[.)])\s+/, "- ")
+        .replace(/\[[^\]]+\]\((https?:\/\/[^)\s]+)\)\s*$/, "($1)")
+        .replace(/<((?:https?):\/\/[^>\s]+)>\s*$/, "($1)")
+        .replace(/\s+(?:Source:\s*)?(https?:\/\/[^\s)]+)\s*$/i, " ($1)");
+
+      if (!line.trim().startsWith("-") || /\(https?:\/\/[^\s)]+\)\s*$/.test(line.trim())) {
+        return line;
+      }
+
+      const citation = citations.find((candidate) => {
+        const start = candidate.start_index;
+        const end = candidate.end_index;
+        return (
+          typeof start === "number" &&
+          typeof end === "number" &&
+          start <= lineEnd &&
+          end >= lineStart
+        );
+      });
+      if (citation?.url) line = `${line.trimEnd()} (${citation.url})`;
+      return line;
+    })
     .join("\n");
 }
 
@@ -139,9 +224,9 @@ export async function speech(text: string): Promise<Buffer> {
     method: "POST",
     headers: authHeaders(),
     body: JSON.stringify({
-      model: CONFIG.voice.openrouterModel,
+      model: CONFIG.voice.model,
       input: text,
-      voice: CONFIG.voice.openrouterVoice,
+      voice: CONFIG.voice.voice,
       response_format: "mp3",
       speed: CONFIG.voice.speed,
     }),
